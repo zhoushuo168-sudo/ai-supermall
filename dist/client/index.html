@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI SuperMall</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230d1020'/%3E%3Cpath d='M32 12l4.8 14.9L52 32l-15.2 5.1L32 52l-4.8-14.9L12 32l15.2-5.1z' fill='%23ff846d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="aurora aurora-one">
+</div>
+<div class="aurora aurora-two">
+</div>
+<header class="nav">
+<a class="brand" href="#top">
+<span class="brand-mark">✦</span>
+<span>AI SuperMall</span>
+</a>
+<nav>
+<a href="#discover" data-i18n="navDiscover">探索</a>
+<a href="#categories" data-i18n="navCategories">分类</a>
+<a href="#how-it-works" data-i18n="navHow">如何使用</a>
+</nav>
+<div class="nav-actions">
+<button class="language-toggle" id="languageToggle" aria-label="Switch language">EN</button>
+<button class="nav-cta" data-scroll="#discover" data-i18n-html="navCta">开始探索 <span>→</span>
+</button>
+</div>
+</header>
+<main id="top">
+<section class="hero">
+<div class="eyebrow">
+<i>
+</i> ONE PLACE TO GET THINGS DONE</div>
+<h1 data-i18n-html="heroTitle">告诉我们你想做什么，<br>
+<em>其余交给我们。</em>
+</h1>
+<p class="hero-copy" data-i18n-html="heroCopy">从一个想法到可用成果，我们帮你完成每一步。<br>无需学习软件，只要说出你的目标。</p>
+<form class="search-box" id="searchForm" action="#discover" method="get">
+<span class="search-icon">⌕</span>
+<input id="toolSearch" name="q" type="search" autocomplete="off" placeholder="今天，你想完成什么？" data-i18n-placeholder="searchPlaceholder">
+<button class="voice-button" id="voiceButton" type="button" aria-label="语音输入" title="语音输入">◉</button>
+<button type="submit" data-i18n="searchButton">开始</button>
+</form>
+<section class="search-answer" id="searchAnswer" hidden>
+<p class="kicker" id="answerKicker">AI SUPER MALL · GUIDE</p>
+<h2 id="answerTitle"></h2>
+<p id="answerCopy"></p>
+<div><strong id="answerRecommendation"></strong><a id="answerAction" href="#discover"></a></div>
+</section>
+<p class="quick-label">
+<span data-i18n="tryThese">例如：</span>
+<button data-query="帮我安排一周晚餐" data-i18n="quickWrite" data-i18n-query="quickWrite">帮我安排一周晚餐</button>
+<button data-query="帮我的奶茶店做推广" data-i18n="quickImage" data-i18n-query="quickImage">帮我的奶茶店做推广</button>
+<button data-query="帮我做一份工作汇报" data-i18n="quickSlides" data-i18n-query="quickSlides">帮我做一份工作汇报</button>
+</p>
+<a class="studio-launch" href="marketing-studio.html">
+<span class="studio-launch-icon">✦</span>
+<span><b data-i18n="studioLaunchTitle">AI 营销工作台</b><small data-i18n="studioLaunchCopy">输入你的业务，立即获得专属营销方案</small></span>
+<i>→</i>
+</a>
+<div class="hero-orbit">
+<span class="orbit-center">AI</span>
+<span class="float-chip chip-a">✦ Create</span>
+<span class="float-chip chip-b">◎ Learn</span>
+<span class="float-chip chip-c">↗ Work</span>
+</div>
+</section>
+<section class="marquee">
+<div>
+<span>DISCOVER</span>
+<b>✦</b>
+<span>CREATE</span>
+<b>✦</b>
+<span>LEARN</span>
+<b>✦</b>
+<span>CONNECT</span>
+<b>✦</b>
+<span>DISCOVER</span>
+<b>✦</b>
+<span>CREATE</span>
+<b>✦</b>
+<span>LEARN</span>
+<b>✦</b>
+</div>
+</section>
+<section id="discover" class="section discover">
+<div class="section-heading">
+<div>
+<p class="kicker">CURATED FOR YOU</p>
+<h2 data-i18n="featuredTitle">从这里开始</h2>
+</div>
+<a href="#categories">
+<span data-i18n="seeAll">查看全部</span> <span>→</span>
+</a>
+</div>
+<div class="tool-grid" id="toolGrid">
+<article class="tool-card pink" data-tags="图片 设计 生成 创作">
+<div class="card-top">
+<span class="app-icon icon-mid">◒</span>
+<span class="featured" data-i18n="midBadge">热门</span>
+</div>
+<div>
+<p class="category" data-i18n="midCategory">图像 · 设计</p>
+<h3 data-i18n="taskVisual">视觉与海报</h3>
+<p class="description" data-i18n="midDescription">把你的文字想象，变成惊艳的视觉作品。</p>
+</div>
+<button class="try-button">
+<span data-i18n="tryNow">立即体验</span>
+<span>↗</span>
+</button>
+</article>
+<article class="tool-card blue" data-tags="写作 对话 办公 学习 文章">
+<div class="card-top">
+<span class="app-icon icon-chat">✳</span>
+<span class="featured" data-i18n="chatBadge">必备</span>
+</div>
+<div>
+<p class="category" data-i18n="chatCategory">对话 · 写作</p>
+<h3 data-i18n="taskWriting">写作与方案</h3>
+<p class="description" data-i18n="chatDescription">思考、创作、解决问题的全能伙伴。</p>
+</div>
+<button class="try-button">
+<span data-i18n="tryNow">立即体验</span>
+<span>↗</span>
+</button>
+</article>
+<article class="tool-card yellow" data-tags="演示文稿 幻灯片 设计 办公">
+<div class="card-top">
+<span class="app-icon icon-gamma">G</span>
+<span class="featured" data-i18n="gammaBadge">新上架</span>
+</div>
+<div>
+<p class="category" data-i18n="gammaCategory">办公 · 演示</p>
+<h3 data-i18n="taskSlides">演示与汇报</h3>
+<p class="description" data-i18n="gammaDescription">用一个想法，做出一份会说话的演示稿。</p>
+</div>
+<button class="try-button">
+<span data-i18n="tryNow">立即体验</span>
+<span>↗</span>
+</button>
+</article>
+<article class="tool-card violet" data-tags="视频 剪辑 生成 创作">
+<div class="card-top">
+<span class="app-icon icon-runway">R</span>
+<span class="featured" data-i18n="runwayBadge">趋势</span>
+</div>
+<div>
+<p class="category" data-i18n="runwayCategory">视频 · 创作</p>
+<h3 data-i18n="taskVideo">视频与短片</h3>
+<p class="description" data-i18n="runwayDescription">让视频创作像写一句话一样简单。</p>
+</div>
+<button class="try-button">
+<span data-i18n="tryNow">立即体验</span>
+<span>↗</span>
+</button>
+</article>
+</div>
+<p class="empty-state" id="emptyState" hidden data-i18n="emptyState">没有找到匹配的工具。换个关键词试试？</p>
+</section>
+<section id="categories" class="section categories">
+<div class="section-heading">
+<div>
+<p class="kicker">FIND YOUR FLOW</p>
+<h2 data-i18n="categoryTitle">按需探索</h2>
+</div>
+</div>
+<div class="category-grid">
+<button class="category-card coral" data-query="生成图片" data-i18n-query="quickImage">
+<span>✦</span>
+<strong data-i18n="catImage">图像创作</strong>
+<small data-i18n="catImageCount">124 个工具</small>
+<i>→</i>
+</button>
+<button class="category-card lilac" data-query="写作" data-i18n-query="catWritingQuery">
+<span>⌁</span>
+<strong data-i18n="catWriting">写作与对话</strong>
+<small data-i18n="catWritingCount">86 个工具</small>
+<i>→</i>
+</button>
+<button class="category-card sky" data-query="视频" data-i18n-query="catVideoQuery">
+<span>◉</span>
+<strong data-i18n="catVideo">视频与音频</strong>
+<small data-i18n="catVideoCount">58 个工具</small>
+<i>→</i>
+</button>
+<button class="category-card mint" data-query="办公" data-i18n-query="catWorkQuery">
+<span>▣</span>
+<strong data-i18n="catWork">效率与办公</strong>
+<small data-i18n="catWorkCount">102 个工具</small>
+<i>→</i>
+</button>
+</div>
+</section>
+<section id="how-it-works" class="section process">
+<p class="kicker">SIMPLE BY DESIGN</p>
+<h2 data-i18n-html="processTitle">从“想做”到“做到”，<br>只差一次搜索。</h2>
+<div class="steps">
+<div>
+<span>01</span>
+<h3 data-i18n="stepOneTitle">说出你的目标</h3>
+<p data-i18n="stepOneCopy">用自然语言描述你想完成的事。</p>
+</div>
+<div>
+<span>02</span>
+<h3 data-i18n="stepTwoTitle">发现合适工具</h3>
+<p data-i18n="stepTwoCopy">从精选 AI 中找到最匹配的伙伴。</p>
+</div>
+<div>
+<span>03</span>
+<h3 data-i18n="stepThreeTitle">开始创造</h3>
+<p data-i18n="stepThreeCopy">直接进入工具，把灵感变成成果。</p>
+</div>
+</div>
+</section>
+<section class="cta">
+<p class="kicker">YOUR NEXT IDEA STARTS HERE</p>
+<h2 data-i18n-html="ctaTitle">准备好，<em>创造点什么？</em>
+</h2>
+<button data-scroll="#top" data-i18n-html="ctaButton">开始探索 <span>→</span>
+</button>
+</section>
+</main>
+<footer>
+<a class="brand" href="#top">
+<span class="brand-mark">✦</span>
+<span>AI SuperMall</span>
+</a>
+<p data-i18n="footerTagline">一个入口，连接每个 AI，无限可能。</p>
+<small data-i18n="footerCopy">© 2026 AI SuperMall. 为好奇心而生。</small>
+</footer>
+<div class="toast" id="toast">
+</div>
+<script src="script.js?v=ai-live-2">
+</script>
+</body>
+</html>
