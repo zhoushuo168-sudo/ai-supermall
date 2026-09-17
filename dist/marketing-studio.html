@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>营销内容助手 · AI SuperMall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="studio.css">
+</head>
+<body>
+<header>
+<a class="brand" href="index.html?v=search-ready">
+<b>✦</b> AI SuperMall</a>
+<div>
+<a class="home-link" href="index.html?v=search-ready">首页</a>
+<span class="pilot" data-i18n="pilot">互动原型</span>
+<button id="lang">EN</button>
+</div>
+</header>
+<main>
+<section class="intro">
+<p class="eyebrow">MARKETING CONTENT ASSISTANT</p>
+<h1 data-i18n-html="title">告诉我你的业务，<em>开始推广。</em>
+</h1>
+<p data-i18n="subtitle">回答几个简单问题，获得一套可直接使用的营销内容方案。</p>
+</section>
+<section class="workspace">
+<p class="task-context" id="taskContext" hidden></p>
+<form id="brief">
+<label>
+<span data-i18n="business">你的业务或品牌</span>
+<input id="business" required data-i18n-placeholder="businessPh" placeholder="例如：一家精品咖啡店">
+</label>
+<label>
+<span data-i18n="product">这次想推广什么？</span>
+<input id="product" required data-i18n-placeholder="productPh" placeholder="例如：秋季限定燕麦拿铁">
+</label>
+<div class="choices">
+<label>
+<span data-i18n="channel">发布到哪里？</span>
+<select id="channel">
+<option value="小红书">小红书</option>
+<option value="Instagram">Instagram</option>
+<option value="微信公众号">微信公众号</option>
+</select>
+</label>
+<label>
+<span data-i18n="tone">想要什么感觉？</span>
+<select id="tone">
+<option value="温暖自然">温暖自然</option>
+<option value="专业可信">专业可信</option>
+<option value="轻松有趣">轻松有趣</option>
+</select>
+</label>
+</div>
+<button class="generate" type="submit" data-i18n="generate">生成我的营销方案 <i>→</i>
+</button>
+<p class="note" data-i18n="note">这是可操作原型；接入 AI 后会按你的真实内容生成。</p>
+</form>
+<section class="result" id="result" hidden>
+<div class="result-top">
+<p class="eyebrow" data-i18n="yourPlan">YOUR CONTENT PLAN</p>
+<div><button id="saveProject">保存到我的项目</button><button id="newBrief" data-i18n="edit">重新填写</button></div>
+</div>
+<h2 id="resultTitle">
+</h2>
+<div class="cards">
+<article>
+<small data-i18n="headline">推荐标题</small>
+<h3 id="headline">
+</h3>
+</article>
+<article>
+<small data-i18n="caption">发布文案</small>
+<p id="caption">
+</p>
+<button class="copy" data-copy="caption" data-i18n="copy">复制文案</button>
+</article>
+<article>
+<small data-i18n="visual">视觉方向</small>
+<p id="visual">
+</p>
+</article>
+</div>
+<div class="next">
+<div>
+<small data-i18n="nextStep">下一步</small>
+<strong data-i18n="nextCopy">用这份方案生成一张社媒海报</strong>
+</div>
+<button id="poster" data-i18n="makePoster">生成海报 <i>→</i>
+</button>
+</div>
+</section>
+</section>
+</main>
+<div class="toast" id="toast">
+</div>
+<div class="member-modal" id="memberModal" hidden><div><button class="close-modal" id="closeModal">×</button><p class="eyebrow">AI SUPERMALL MEMBER</p><h2>保存你的成果</h2><p>输入邮箱，即可保存方案、下次继续修改。</p><input id="memberEmail" type="email" placeholder="你的邮箱地址"><button id="confirmSave">注册并保存</button></div></div>
+<script src="studio.js">
+</script>
+</body>
+</html>

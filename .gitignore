@@ -1,0 +1,5 @@
+.env
+把百炼_API_Key_粘贴到这里.txt
+node_modules/
+__pycache__/
+dist/__pycache__/

@@ -1,0 +1,51 @@
+:root{--ink:#181817;--paper:#f7f7f3;--line:#ddddD5;--coral:#ff6554}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans SC",sans-serif}
+header{max-width:1160px;margin:auto;padding:25px 25px;display:flex;justify-content:space-between;align-items:center}
+.brand{font-weight:800;text-decoration:none;color:inherit}
+.brand b{display:inline-grid;place-items:center;background:#191918;color:#fff;border-radius:8px;width:25px;height:25px;margin-right:7px}
+.pilot{font:11px "DM Mono";letter-spacing:.7px;color:#777;margin-right:15px}
+.home-link{display:inline-block;margin-right:13px;color:var(--ink);font-size:13px;text-decoration:none;border-bottom:1px solid var(--ink);padding-bottom:2px}
+header button,.result-top button{background:transparent;border:1px solid #c9c9c1;border-radius:99px;padding:8px 11px;font:12px "DM Mono";cursor:pointer}
+main{max-width:1060px;margin:auto;padding:68px 25px 90px}
+.intro{max-width:680px;text-align:center;margin:0 auto 55px}
+.eyebrow{font:11px "DM Mono";letter-spacing:1.1px;color:#777;margin:0 0 14px}
+.intro h1{font-size:clamp(45px,7vw,80px);letter-spacing:-.08em;line-height:.98;margin:0}
+.intro h1 em{font-family:Georgia,serif;font-weight:400}
+.intro>p:last-child{color:#686863;font-size:16px;margin:24px 0 0}
+.task-context{grid-column:1/-1;margin:0;padding:12px 14px;background:#fff4df;border:1px solid #f2d8a5;border-radius:12px;font-size:14px;line-height:1.55}
+
+.workspace{display:grid;grid-template-columns:360px 1fr;gap:17px;align-items:start}
+form,.result{background:#fff;border:1px solid #e2e2dc;border-radius:22px;padding:27px;box-shadow:0 16px 38px #2a2a1c0c}
+label{display:block;font-size:13px;font-weight:700;margin-bottom:18px}
+input,select{width:100%;border:1px solid #dbdbd5;border-radius:10px;padding:12px;margin-top:8px;background:#fff;font:13px inherit;color:#232321}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.choices label{font-size:12px}
+.generate,.next button{width:100%;border:0;background:var(--coral);color:#fff;border-radius:12px;padding:14px;font:700 14px inherit;cursor:pointer}
+.generate i,.next i{font-style:normal;margin-left:7px}
+.note{font-size:11px;color:#8a8a84;line-height:1.5;margin:14px 0 0}
+.result-top{display:flex;justify-content:space-between;align-items:start}
+.result h2{font-size:28px;letter-spacing:-1.2px;margin:11px 0 22px}
+.cards{display:grid;gap:10px}
+.cards article{background:#f5f5f0;border-radius:14px;padding:16px}
+.cards small,.next small{color:#777;font:10px "DM Mono";letter-spacing:.7px}
+.cards h3{font-size:19px;letter-spacing:-.6px;margin:8px 0 0}
+.cards p{font-size:13px;line-height:1.7;margin:8px 0 0}
+.copy{border:0;background:transparent;padding:8px 0 0;color:#555;text-decoration:underline;cursor:pointer;font:12px inherit}
+.next{display:flex;justify-content:space-between;align-items:center;margin-top:17px;background:#20201e;color:#fff;border-radius:14px;padding:17px}
+.next small{color:#b7b7ac;display:block;margin-bottom:5px}
+.next strong{font-size:13px}
+.next button{width:auto;padding:10px 13px;font-size:12px}
+.toast{position:fixed;left:50%;bottom:25px;transform:translate(-50%,90px);padding:11px 17px;background:#20201e;color:#fff;border-radius:99px;font-size:13px;transition:.25s}
+.toast.show{transform:translate(-50%,0)}
+.member-modal{position:fixed;inset:0;z-index:5;display:grid;place-items:center;background:#17171688;padding:20px}.member-modal>div{position:relative;width:min(410px,100%);background:#fff;border-radius:20px;padding:30px;box-shadow:0 22px 60px #0004}.member-modal h2{margin:7px 0 8px;font-size:28px;letter-spacing:-1px}.member-modal p{font-size:14px;line-height:1.6;color:#666;margin:0 0 18px}.member-modal input{margin:0 0 12px}.member-modal #confirmSave{width:100%;border:0;border-radius:11px;padding:13px;background:var(--coral);color:#fff;font:700 14px inherit;cursor:pointer}.close-modal{position:absolute;right:14px;top:12px;border:0;background:transparent;font-size:24px;cursor:pointer}.result-top>div{display:flex;gap:8px}.result-top>div button{white-space:nowrap}
+.member-modal[hidden]{display:none}
+@media(max-width:760px){main{padding:45px 18px}
+.workspace{grid-template-columns:1fr}
+.intro{margin-bottom:35px}
+.intro>p:last-child{font-size:14px}
+.result{padding:20px}
+form{padding:21px}
+.next{align-items:flex-start;gap:12px}
+.next button{white-space:nowrap}
+}

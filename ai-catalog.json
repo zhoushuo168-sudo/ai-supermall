@@ -1,0 +1,14 @@
+[
+  {"id":"supermall-marketing","name":"AI SuperMall 营销工作台","nameEn":"AI SuperMall Marketing Studio","skills":["营销","推广","品牌","小红书","社交媒体","文案"],"region":"global","internal":true,"url":"marketing-studio.html","note":"在本站直接生成营销方案"},
+  {"id":"qwen","name":"千问","nameEn":"Qwen","skills":["中文问答","写作","方案","学习","代码"],"region":"china","url":"https://www.qianwen.com/","note":"中文通用任务"},
+  {"id":"deepseek","name":"DeepSeek","nameEn":"DeepSeek","skills":["推理","学习","代码","中文","分析"],"region":"global","url":"https://chat.deepseek.com/","note":"推理与技术问题"},
+  {"id":"chatgpt","name":"ChatGPT","nameEn":"ChatGPT","skills":["通用创作","写作","分析","图片","工作"],"region":"north-america","url":"https://chatgpt.com/","note":"通用复杂任务"},
+  {"id":"claude","name":"Claude","nameEn":"Claude","skills":["长文","总结","写作","分析","代码"],"region":"north-america","url":"https://claude.ai/","note":"长文与深度写作"},
+  {"id":"gemini","name":"Gemini","nameEn":"Gemini","skills":["Google","资料","图片","办公","研究"],"region":"north-america","url":"https://gemini.google.com/","note":"Google 生态任务"},
+  {"id":"perplexity","name":"Perplexity","nameEn":"Perplexity","skills":["联网","新闻","研究","来源","事实"],"region":"global","url":"https://www.perplexity.ai/","note":"带来源的联网研究"},
+  {"id":"midjourney","name":"Midjourney","nameEn":"Midjourney","skills":["图片","插画","创意","视觉"],"region":"global","url":"https://www.midjourney.com/","note":"创意图像"},
+  {"id":"canva","name":"Canva","nameEn":"Canva","skills":["海报","设计","社交媒体","模板","图片"],"region":"global","url":"https://www.canva.com/","note":"可编辑设计"},
+  {"id":"runway","name":"Runway","nameEn":"Runway","skills":["视频","剪辑","生成视频","特效"],"region":"north-america","url":"https://runwayml.com/","note":"视频生成与剪辑"},
+  {"id":"gamma","name":"Gamma","nameEn":"Gamma","skills":["演示文稿","幻灯片","PPT","文档"],"region":"global","url":"https://gamma.app/","note":"演示文稿"},
+  {"id":"notion-ai","name":"Notion AI","nameEn":"Notion AI","skills":["笔记","知识库","整理","办公","项目"],"region":"global","url":"https://www.notion.so/product/ai","note":"笔记与知识整理"}
+]
