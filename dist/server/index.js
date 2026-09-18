@@ -9,14 +9,15 @@ export default {
     if (url.pathname === "/api/recommend") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
       try {
-        const { query = "", language = "zh" } = await request.json();
+        const { query = "", language = "zh", context = [] } = await request.json();
         const text = String(query).trim().slice(0, 500);
         if (!text) return json({ error: language === "en" ? "Please enter a question." : "请先输入你的问题。" }, 400);
         if (!env.BAILIAN_API_KEY) return json({ error: language === "en" ? "AI service is not configured." : "AI 服务尚未连接。" }, 503);
         const isEnglish = language === "en";
+        const earlier = Array.isArray(context) ? context.slice(-4).map(item => `Q: ${String(item.question || "").slice(0, 300)}\nA: ${String(item.answer || "").slice(0, 500)}`).join("\n") : "";
         const prompt = isEnglish
-          ? `You are the helpful AI assistant inside AI SuperMall. Answer the user's question in English. Give a direct, practical first response. For medical, legal, or investment decisions, include a brief safety note. Return JSON only: {"title":"","answer":"","recommendation":""}. Keep answer under 90 words. User: ${text}`
-          : `你是 AI SuperMall 里的贴心 AI 助手。请用简体中文直接、实用地回答用户的问题。涉及医疗、法律或投资决策时，附上简短风险提示。严格只返回 JSON：{"title":"","answer":"","recommendation":""}。answer 不超过90字。用户：${text}`;
+          ? `You are the helpful AI assistant inside AI SuperMall. Continue the conversation using the earlier context when it is relevant. Answer in English, directly and practically. For medical, legal, or investment decisions, include a brief safety note. Return JSON only: {"title":"","answer":"","recommendation":""}. Keep answer under 90 words. Earlier context: ${earlier || "None"}. User: ${text}`
+          : `你是 AI SuperMall 里的贴心 AI 助手。若有此前对话，请结合上下文继续回答。请用简体中文直接、实用地回答。涉及医疗、法律或投资决策时，附上简短风险提示。严格只返回 JSON：{"title":"","answer":"","recommendation":""}。answer 不超过90字。此前对话：${earlier || "无"}。用户：${text}`;
         const base = (env.BAILIAN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
         const upstream = await fetch(`${base}/chat/completions`, {
           method: "POST",

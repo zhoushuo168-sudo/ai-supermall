@@ -50,7 +50,15 @@
 <p class="kicker" id="answerKicker">AI SUPER MALL · GUIDE</p>
 <h2 id="answerTitle"></h2>
 <p id="answerCopy"></p>
-<div><strong id="answerRecommendation"></strong><a id="answerAction" href="#discover"></a></div>
+<div><strong id="answerRecommendation"></strong><a id="answerAction" href="#followUpForm"></a></div>
+<form class="followup" id="followUpForm" hidden>
+<label id="followUpLabel" for="followUpInput">继续追问</label>
+<div>
+<input id="followUpInput" type="search" autocomplete="off" required>
+<button class="followup-voice" id="followUpVoice" type="button" aria-label="语音输入">◉</button>
+<button id="followUpSubmit" type="submit">发送</button>
+</div>
+</form>
 </section>
 <p class="quick-label">
 <span data-i18n="tryThese">例如：</span>
@@ -235,7 +243,7 @@
 </footer>
 <div class="toast" id="toast">
 </div>
-<script src="script.js?v=ai-live-3">
+<script src="script.js?v=ai-followup-1">
 </script>
 </body>
 </html>
