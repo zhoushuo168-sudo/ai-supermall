@@ -26,7 +26,22 @@ export default {
         });
         if (!upstream.ok) return json({ error: isEnglish ? "AI service is temporarily unavailable." : "AI 服务暂时不可用，请稍后重试。" }, 502);
         const payload = await upstream.json();
-        const result = JSON.parse(payload.choices?.[0]?.message?.content || "{}");
+        let result = JSON.parse(payload.choices?.[0]?.message?.content || "{}");
+        if (!String(result.answer || "").trim()) {
+          const retryPrompt = isEnglish
+            ? `Give a direct, practical answer in English to this question. Use the earlier context when helpful. Do not use JSON or headings. Keep it under 90 words. Earlier context: ${earlier || "None"}. Question: ${text}`
+            : `请直接、实用地用简体中文回答这个问题。需要时结合此前对话。不要输出 JSON 或标题。回答不超过90字。此前对话：${earlier || "无"}。问题：${text}`;
+          const retry = await fetch(`${base}/chat/completions`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: env.BAILIAN_MODEL || "qwen3.8-flash", messages: [{ role: "system", content: "Give a helpful, non-empty answer." }, { role: "user", content: retryPrompt }], temperature: 0.35, max_tokens: 260 })
+          });
+          if (retry.ok) {
+            const retryPayload = await retry.json();
+            const answer = String(retryPayload.choices?.[0]?.message?.content || "").trim();
+            if (answer) result = { title: result.title || text, answer, recommendation: result.recommendation || "" };
+          }
+        }
         return json(result);
       } catch (error) {
         return json({ error: "AI service is temporarily unavailable." }, 502);
