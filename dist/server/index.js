@@ -3,9 +3,22 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), {
   headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
 });
 
+const accountRegionFor = (request, url) => {
+  const requested = url.searchParams.get("region");
+  if (requested === "cn" || requested === "global") return requested;
+  return request.headers.get("cf-ipcountry") === "CN" ? "cn" : "global";
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/account/bootstrap") {
+      if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
+      const region = accountRegionFor(request, url);
+      const globalReady = Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY);
+      const chinaReady = Boolean(env.CN_AUTH_URL && env.CN_AUTH_PUBLISHABLE_KEY);
+      return json({ region, ready: region === "cn" ? chinaReady : globalReady });
+    }
     if (url.pathname === "/api/recommend") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
       try {
