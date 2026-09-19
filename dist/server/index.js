@@ -20,10 +20,13 @@ const safeEmail = email => String(email || "").trim().toLowerCase().slice(0, 254
 const safePassword = password => String(password || "");
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
+  const code = String(body?.code || body?.error_code || "").trim();
+  const detail = String(body?.details || body?.hint || "").trim();
+  if (code === "PGRST205") return "Supabase 数据表 public.projects 尚未创建（PGRST205）。请在 Supabase SQL Editor 运行网站提供的会员数据库迁移文件。";
   if (/redirect/i.test(message)) return "Supabase rejected the confirmation return address. Please check the allowed Redirect URLs setting.";
   if (/rate limit|email.*rate/i.test(message)) return "Supabase email sending is temporarily rate-limited. Please wait a few minutes before trying again.";
   if (/email.*provider.*disabled|email.*not.*enabled/i.test(message)) return "Supabase Email/Password sign-in is not enabled in Authentication settings.";
-  return message || `Supabase ${action} failed (HTTP ${status}).`;
+  return `${message || `Supabase ${action} failed (HTTP ${status}).`}${detail ? ` — ${detail}` : ""}${code ? ` [${code}]` : ""}`;
 };
 const cookieValue = (request, name) => {
   const found = (request.headers.get("Cookie") || "").split(";").map(part => part.trim()).find(part => part.startsWith(`${name}=`));
@@ -106,6 +109,7 @@ async function accountRoute(request, env, url) {
     if (request.method === "GET") {
       const response = await fetch(`${base}/rest/v1/projects?select=id,title,locale,conversation,updated_at&order=updated_at.desc`, { headers: supabaseHeaders(env, token) });
       const body = await response.json();
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "project loading"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
       return json(body, response.status);
     }
     if (request.method === "POST") {
@@ -114,6 +118,7 @@ async function accountRoute(request, env, url) {
       const safeConversation = Array.isArray(conversation) ? conversation.slice(-30).map(item => ({ question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000) })) : [];
       const response = await fetch(`${base}/rest/v1/projects`, { method: "POST", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ owner_id: user.id, title: cleanTitle, locale: locale === "en" ? "en" : "zh", conversation: safeConversation }) });
       const body = await response.json();
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "project saving"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
       return json(body, response.status);
     }
     return json({ error: "Method not allowed" }, 405);
