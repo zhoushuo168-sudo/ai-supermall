@@ -18,6 +18,13 @@ const supabaseHeaders = (env, token) => ({
 });
 const safeEmail = email => String(email || "").trim().toLowerCase().slice(0, 254);
 const safePassword = password => String(password || "");
+const supabaseError = (body, status, action) => {
+  const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
+  if (/redirect/i.test(message)) return "Supabase rejected the confirmation return address. Please check the allowed Redirect URLs setting.";
+  if (/rate limit|email.*rate/i.test(message)) return "Supabase email sending is temporarily rate-limited. Please wait a few minutes before trying again.";
+  if (/email.*provider.*disabled|email.*not.*enabled/i.test(message)) return "Supabase Email/Password sign-in is not enabled in Authentication settings.";
+  return message || `Supabase ${action} failed (HTTP ${status}).`;
+};
 const cookieValue = (request, name) => {
   const found = (request.headers.get("Cookie") || "").split(";").map(part => part.trim()).find(part => part.startsWith(`${name}=`));
   return found ? decodeURIComponent(found.slice(name.length + 1)) : "";
@@ -53,10 +60,10 @@ async function accountRoute(request, env, url) {
     if (!/^\S+@\S+\.\S+$/.test(cleanEmail) || cleanPassword.length < 8) return json({ error: "Use a valid email and a password of at least 8 characters." }, 400);
     const response = await fetch(`${base}/auth/v1/signup`, {
       method: "POST", headers: supabaseHeaders(env),
-      body: JSON.stringify({ email: cleanEmail, password: cleanPassword, options: { emailRedirectTo: `${url.origin}/account.html` } })
+      body: JSON.stringify({ email: cleanEmail, password: cleanPassword, email_redirect_to: `${url.origin}/account.html` })
     });
     const body = await response.json();
-    if (!response.ok) return json({ error: body.message || "Registration could not be completed." }, response.status);
+    if (!response.ok) return json({ error: supabaseError(body, response.status, "registration"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
     return json({ needsVerification: true, email: cleanEmail });
   }
   if (path === "/api/account/verify" && request.method === "POST") {
