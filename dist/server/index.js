@@ -61,9 +61,9 @@ async function accountRoute(request, env, url) {
     const { email, password } = await request.json();
     const cleanEmail = safeEmail(email), cleanPassword = safePassword(password);
     if (!/^\S+@\S+\.\S+$/.test(cleanEmail) || cleanPassword.length < 8) return json({ error: "Use a valid email and a password of at least 8 characters." }, 400);
-    const response = await fetch(`${base}/auth/v1/signup`, {
+    const response = await fetch(`${base}/auth/v1/signup?redirect_to=${encodeURIComponent(`${url.origin}/account.html`)}`, {
       method: "POST", headers: supabaseHeaders(env),
-      body: JSON.stringify({ email: cleanEmail, password: cleanPassword, email_redirect_to: `${url.origin}/account.html` })
+      body: JSON.stringify({ email: cleanEmail, password: cleanPassword })
     });
     const body = await response.json();
     if (!response.ok) return json({ error: supabaseError(body, response.status, "registration"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
@@ -88,12 +88,6 @@ async function accountRoute(request, env, url) {
     const body = await response.json();
     if (!response.ok) return json({ error: body.error_description || body.message || "Email or password is incorrect." }, response.status);
     return sessionResponse({ signedIn: true, email: safeEmail(email) }, body.access_token, body.expires_in || 3600);
-  }
-  if (path === "/api/account/confirm-session" && request.method === "POST") {
-    const token = bearerToken(request);
-    const user = await supabaseUser(env, token);
-    if (!user) return json({ error: "The confirmation link is invalid or has expired. Please sign in with your email and password." }, 401);
-    return sessionResponse({ signedIn: true, email: user.email || "" }, token);
   }
   if (path === "/api/account/me" && request.method === "GET") {
     const user = await supabaseUser(env, bearerToken(request));
