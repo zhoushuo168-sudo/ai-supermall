@@ -28,6 +28,7 @@
 </nav>
 <div class="nav-actions">
 <button class="language-toggle" id="languageToggle" aria-label="Switch language">EN</button>
+<a class="account-link" href="account.html" data-i18n="navAccount">会员登录</a>
 <button class="nav-cta" data-scroll="#discover" data-i18n-html="navCta">开始探索 <span>→</span>
 </button>
 </div>
@@ -51,7 +52,7 @@
 <p class="kicker" id="answerKicker">AI SUPER MALL · GUIDE</p>
 <h2 id="answerTitle"></h2>
 <p id="answerCopy"></p>
-<div><strong id="answerRecommendation"></strong><a id="answerAction" href="#followUpForm"></a></div>
+<div><strong id="answerRecommendation"></strong><span class="answer-actions"><button id="saveConversation" type="button" hidden data-i18n="saveConversation">保存项目</button><a id="answerAction" href="#followUpForm"></a></span></div>
 <form class="followup" id="followUpForm" hidden>
 <label id="followUpLabel" for="followUpInput">继续追问</label>
 <div>
@@ -264,7 +265,7 @@
 <p class="kicker" data-i18n="memberKicker">START FREE · GROW WHEN READY</p>
 <h2 data-i18n-html="memberTitle">先把事情做好，<br>会员权益慢慢来。</h2>
 <p data-i18n="memberCopy">现在可以免费开始。等你需要保存项目、处理更复杂的任务或更多使用额度时，再选择适合你的会员服务。</p>
-<button class="member-button" data-scroll="#top" data-i18n-html="memberButton">免费开始使用 <span>→</span></button>
+<a class="member-button" href="account.html" data-i18n-html="memberButton">免费开始使用 <span>→</span></a>
 </div>
 <div class="membership-card">
 <span class="member-badge" data-i18n="memberBadge">现在开放</span>

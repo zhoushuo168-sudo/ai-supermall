@@ -9,15 +9,118 @@ const accountRegionFor = (request, url) => {
   return request.headers.get("cf-ipcountry") === "CN" ? "cn" : "global";
 };
 
+const globalAccountReady = env => Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY);
+const accountUnavailable = region => json({ error: region === "cn" ? "The China account service is not available yet." : "The account service is not configured yet." }, 503);
+const supabaseHeaders = (env, token) => ({
+  "apikey": env.SUPABASE_PUBLISHABLE_KEY,
+  "Content-Type": "application/json",
+  ...(token ? { "Authorization": `Bearer ${token}` } : {})
+});
+const safeEmail = email => String(email || "").trim().toLowerCase().slice(0, 254);
+const safePassword = password => String(password || "");
+const cookieValue = (request, name) => {
+  const found = (request.headers.get("Cookie") || "").split(";").map(part => part.trim()).find(part => part.startsWith(`${name}=`));
+  return found ? decodeURIComponent(found.slice(name.length + 1)) : "";
+};
+const bearerToken = request => (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim() || cookieValue(request, "ai_supermall_session");
+const sessionResponse = (body, accessToken, maxAge = 3600) => new Response(JSON.stringify(body), {
+  status: 200,
+  headers: {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Set-Cookie": `ai_supermall_session=${encodeURIComponent(accessToken)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`
+  }
+});
+
+async function supabaseUser(env, token) {
+  if (!token) return null;
+  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/user`, { headers: supabaseHeaders(env, token) });
+  return response.ok ? response.json() : null;
+}
+
+async function accountRoute(request, env, url) {
+  const region = accountRegionFor(request, url);
+  if (region !== "global" || !globalAccountReady(env)) return accountUnavailable(region);
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  const path = url.pathname;
+  if (path === "/api/account/health" && request.method === "GET") {
+    const response = await fetch(`${base}/auth/v1/settings`, { headers: supabaseHeaders(env) });
+    return json({ region: "global", connected: response.ok }, response.ok ? 200 : 502);
+  }
+  if (path === "/api/account/register" && request.method === "POST") {
+    const { email, password } = await request.json();
+    const cleanEmail = safeEmail(email), cleanPassword = safePassword(password);
+    if (!/^\S+@\S+\.\S+$/.test(cleanEmail) || cleanPassword.length < 8) return json({ error: "Use a valid email and a password of at least 8 characters." }, 400);
+    const response = await fetch(`${base}/auth/v1/signup`, {
+      method: "POST", headers: supabaseHeaders(env),
+      body: JSON.stringify({ email: cleanEmail, password: cleanPassword, options: { emailRedirectTo: `${url.origin}/account.html` } })
+    });
+    const body = await response.json();
+    if (!response.ok) return json({ error: body.message || "Registration could not be completed." }, response.status);
+    return json({ needsVerification: true, email: cleanEmail });
+  }
+  if (path === "/api/account/verify" && request.method === "POST") {
+    const { email, code } = await request.json();
+    const response = await fetch(`${base}/auth/v1/verify`, {
+      method: "POST", headers: supabaseHeaders(env),
+      body: JSON.stringify({ email: safeEmail(email), token: String(code || "").trim(), type: "signup" })
+    });
+    const body = await response.json();
+    if (!response.ok) return json({ error: body.message || "The verification code is not valid." }, response.status);
+    if (!body.session?.access_token) return json({ error: "Email verification succeeded, but no session was created. Please sign in." }, 200);
+    return sessionResponse({ signedIn: true, email: safeEmail(email) }, body.session.access_token, body.session.expires_in || 3600);
+  }
+  if (path === "/api/account/session" && request.method === "POST") {
+    const { email, password } = await request.json();
+    const response = await fetch(`${base}/auth/v1/token?grant_type=password`, {
+      method: "POST", headers: supabaseHeaders(env), body: JSON.stringify({ email: safeEmail(email), password: safePassword(password) })
+    });
+    const body = await response.json();
+    if (!response.ok) return json({ error: body.error_description || body.message || "Email or password is incorrect." }, response.status);
+    return sessionResponse({ signedIn: true, email: safeEmail(email) }, body.access_token, body.expires_in || 3600);
+  }
+  if (path === "/api/account/me" && request.method === "GET") {
+    const user = await supabaseUser(env, bearerToken(request));
+    if (!user) return json({ signedIn: false }, 401);
+    return json({ signedIn: true, email: user.email || "" });
+  }
+  if (path === "/api/account/logout" && request.method === "POST") {
+    return sessionResponse({ signedIn: false }, "", 0);
+  }
+  if (path === "/api/member/projects") {
+    const token = bearerToken(request), user = await supabaseUser(env, token);
+    if (!user) return json({ error: "Please sign in to continue." }, 401);
+    if (request.method === "GET") {
+      const response = await fetch(`${base}/rest/v1/projects?select=id,title,locale,conversation,updated_at&order=updated_at.desc`, { headers: supabaseHeaders(env, token) });
+      const body = await response.json();
+      return json(body, response.status);
+    }
+    if (request.method === "POST") {
+      const { title, locale = "zh", conversation = [] } = await request.json();
+      const cleanTitle = String(title || "Untitled project").trim().slice(0, 120) || "Untitled project";
+      const safeConversation = Array.isArray(conversation) ? conversation.slice(-30).map(item => ({ question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000) })) : [];
+      const response = await fetch(`${base}/rest/v1/projects`, { method: "POST", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ owner_id: user.id, title: cleanTitle, locale: locale === "en" ? "en" : "zh", conversation: safeConversation }) });
+      const body = await response.json();
+      return json(body, response.status);
+    }
+    return json({ error: "Method not allowed" }, 405);
+  }
+  return json({ error: "Not found" }, 404);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/api/account/bootstrap") {
       if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
       const region = accountRegionFor(request, url);
-      const globalReady = Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY);
+      const globalReady = globalAccountReady(env);
       const chinaReady = Boolean(env.CN_AUTH_URL && env.CN_AUTH_PUBLISHABLE_KEY);
       return json({ region, ready: region === "cn" ? chinaReady : globalReady });
+    }
+    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects") {
+      try { return await accountRoute(request, env, url); }
+      catch { return json({ error: "The account service is temporarily unavailable." }, 502); }
     }
     if (url.pathname === "/api/recommend") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
