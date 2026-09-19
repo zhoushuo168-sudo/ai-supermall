@@ -79,6 +79,12 @@ async function accountRoute(request, env, url) {
     if (!response.ok) return json({ error: body.error_description || body.message || "Email or password is incorrect." }, response.status);
     return sessionResponse({ signedIn: true, email: safeEmail(email) }, body.access_token, body.expires_in || 3600);
   }
+  if (path === "/api/account/confirm-session" && request.method === "POST") {
+    const token = bearerToken(request);
+    const user = await supabaseUser(env, token);
+    if (!user) return json({ error: "The confirmation link is invalid or has expired. Please sign in with your email and password." }, 401);
+    return sessionResponse({ signedIn: true, email: user.email || "" }, token);
+  }
   if (path === "/api/account/me" && request.method === "GET") {
     const user = await supabaseUser(env, bearerToken(request));
     if (!user) return json({ signedIn: false }, 401);
