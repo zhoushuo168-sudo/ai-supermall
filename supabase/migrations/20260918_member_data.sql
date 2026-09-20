@@ -27,7 +27,7 @@ revoke all on table public.projects from anon;
 revoke all on table public.profiles from authenticated;
 revoke all on table public.projects from authenticated;
 grant select on table public.profiles to authenticated;
-grant select, insert on table public.projects to authenticated;
+grant select, insert, update on table public.projects to authenticated;
 
 drop policy if exists "members read their own profile" on public.profiles;
 create policy "members read their own profile" on public.profiles
@@ -40,6 +40,12 @@ create policy "members read their own projects" on public.projects
 drop policy if exists "members create their own projects" on public.projects;
 create policy "members create their own projects" on public.projects
   for insert to authenticated with check ((select auth.uid()) = owner_id);
+
+drop policy if exists "members update their own projects" on public.projects;
+create policy "members update their own projects" on public.projects
+  for update to authenticated
+  using ((select auth.uid()) = owner_id)
+  with check ((select auth.uid()) = owner_id);
 
 create or replace function public.create_profile_for_new_user()
 returns trigger

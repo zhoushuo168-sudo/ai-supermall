@@ -120,6 +120,18 @@ async function accountRoute(request, env, url) {
       if (!response.ok) return json({ error: supabaseError(body, response.status, "project saving"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
       return json(body, response.status);
     }
+    if (request.method === "PATCH") {
+      const { id, locale = "zh", conversation = [] } = await request.json();
+      const projectId = String(id || "").trim();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
+      const safeConversation = Array.isArray(conversation) ? conversation.slice(-30).map(item => ({ question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000) })) : [];
+      const query = new URLSearchParams({ id: `eq.${projectId}`, select: "id,title,locale,conversation,updated_at" });
+      const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { method: "PATCH", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ locale: locale === "en" ? "en" : "zh", conversation: safeConversation, updated_at: new Date().toISOString() }) });
+      const body = await response.json();
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "project updating"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+      if (!body[0]) return json({ error: "Project not found." }, 404);
+      return json(body[0], response.status);
+    }
     return json({ error: "Method not allowed" }, 405);
   }
   return json({ error: "Not found" }, 404);
