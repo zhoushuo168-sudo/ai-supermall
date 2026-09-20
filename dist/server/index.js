@@ -101,9 +101,14 @@ async function accountRoute(request, env, url) {
     const token = bearerToken(request), user = await supabaseUser(env, token);
     if (!user) return json({ error: "Please sign in to continue." }, 401);
     if (request.method === "GET") {
-      const response = await fetch(`${base}/rest/v1/projects?select=id,title,locale,conversation,updated_at&order=updated_at.desc`, { headers: supabaseHeaders(env, token) });
+      const projectId = url.searchParams.get("id");
+      if (projectId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
+      const query = new URLSearchParams({ select: "id,title,locale,conversation,updated_at", order: "updated_at.desc" });
+      if (projectId) query.set("id", `eq.${projectId}`);
+      const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { headers: supabaseHeaders(env, token) });
       const body = await response.json();
       if (!response.ok) return json({ error: supabaseError(body, response.status, "project loading"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+      if (projectId) return body[0] ? json(body[0]) : json({ error: "Project not found." }, 404);
       return json(body, response.status);
     }
     if (request.method === "POST") {
