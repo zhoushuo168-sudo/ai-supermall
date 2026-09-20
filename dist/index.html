@@ -29,7 +29,8 @@
 </nav>
 <div class="nav-actions">
 <button class="language-toggle" id="languageToggle" aria-label="Switch language">EN</button>
-<a class="account-link" href="account.html" data-i18n="navAccount">会员登录</a>
+<a class="account-link" id="signInLink" href="account.html?mode=login" data-i18n="navSignIn">登录</a>
+<a class="account-link" id="registerLink" href="account.html?mode=register" data-i18n="navRegister">注册</a>
 <button class="nav-cta" data-scroll="#discover" data-i18n-html="navCta">开始探索 <span>→</span>
 </button>
 </div>
@@ -295,6 +296,9 @@
 </button>
 </section>
 </main>
+<nav class="mobile-app-nav" aria-label="Mobile navigation">
+<a href="#top" data-i18n="mobileHome">Home</a><a href="#discover" data-i18n="mobileTools">AI Tools</a><a href="account.html?mode=login" data-i18n="mobileProjects">Projects</a><a href="account.html?mode=login" data-i18n="mobileAccount">Account</a>
+</nav>
 <footer>
 <a class="brand" href="#top">
 <span class="brand-mark">✦</span>
