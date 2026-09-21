@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=vision-1">
+<link rel="stylesheet" href="style.css?v=model-select-1">
 <link rel="stylesheet" href="project.css">
 <link rel="stylesheet" href="mobile-member-nav.css">
 <link rel="stylesheet" href="mobile-ui.css">
@@ -60,6 +60,7 @@
 <button class="voice-button" id="voiceButton" type="button" aria-label="语音输入" title="语音输入">◉</button>
 <button type="submit" data-i18n="searchButton">开始</button>
 </form>
+<label class="model-selector" for="modelSelector"><span data-i18n="modelLabel">选择模型</span><select id="modelSelector" aria-label="选择模型"><option value="qwen" data-i18n="modelQwen">通义千问</option><option value="deepseek" data-i18n="modelDeepSeek">DeepSeek</option></select></label>
 <p class="voice-status" id="mainVoiceStatus" aria-live="polite" hidden></p>
 <section class="search-answer" id="searchAnswer" hidden>
 <p class="kicker" id="answerKicker">AI SUPER MALL · GUIDE</p>
@@ -321,7 +322,7 @@
 </footer>
 <div class="toast" id="toast">
 </div>
-<script src="script.js?v=vision-2">
+<script src="script.js?v=vision-3">
 </script>
 <script src="voice-merge.js"></script>
 <script src="input-experience.js"></script>
