@@ -1,0 +1,2 @@
+/* iOS Safari zooms a page when a focused editable control renders below 16px. */
+@media (max-width:760px){@supports (-webkit-touch-callout:none){input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),textarea,select,[contenteditable="true"]{font-size:16px!important}}}
