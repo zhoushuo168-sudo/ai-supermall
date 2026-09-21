@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="project.css">
 <link rel="stylesheet" href="mobile-member-nav.css">
 <link rel="stylesheet" href="mobile-ui.css">
+<link rel="stylesheet" href="input-experience.css">
 </head>
 <body>
 <div class="aurora aurora-one">
@@ -50,7 +51,7 @@
 <p class="hero-copy" data-i18n-html="heroCopy">从一个想法到可用成果，我们帮你完成每一步。<br>无需学习软件，只要说出你的目标。</p>
 <form class="search-box" id="searchForm" action="#discover" method="get">
 <span class="search-icon">⌕</span>
-<input id="toolSearch" name="q" type="search" autocomplete="off" placeholder="今天，你想完成什么？" data-i18n-placeholder="searchPlaceholder">
+<textarea id="toolSearch" name="q" rows="1" autocomplete="off" placeholder="今天，你想完成什么？" data-i18n-placeholder="searchPlaceholder"></textarea>
 <button class="voice-button" id="voiceButton" type="button" aria-label="语音输入" title="语音输入">◉</button>
 <button type="submit" data-i18n="searchButton">开始</button>
 </form>
@@ -64,7 +65,7 @@
 <form class="followup" id="followUpForm" hidden>
 <label id="followUpLabel" for="followUpInput">继续追问</label>
 <div>
-<input id="followUpInput" type="search" autocomplete="off" required>
+<textarea id="followUpInput" rows="1" autocomplete="off" required></textarea>
 <button class="followup-voice" id="followUpVoice" type="button" aria-label="语音输入">◉</button>
 <button id="followUpSubmit" type="submit">发送</button>
 </div>
@@ -318,5 +319,6 @@
 <script src="script.js?v=vision-1">
 </script>
 <script src="voice-merge.js"></script>
+<script src="input-experience.js"></script>
 </body>
 </html>
