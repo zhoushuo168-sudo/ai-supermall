@@ -1,0 +1,6 @@
+@media (max-width:760px) {
+  .nav-actions #projectsLink,
+  .nav-actions #chatsLink {
+    display:none !important;
+  }
+}
