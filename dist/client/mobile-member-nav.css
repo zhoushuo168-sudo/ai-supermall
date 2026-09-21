@@ -3,4 +3,7 @@
   .nav-actions #chatsLink {
     display:none !important;
   }
+  .mobile-app-nav {
+    grid-template-columns:repeat(5,minmax(0,1fr));
+  }
 }
