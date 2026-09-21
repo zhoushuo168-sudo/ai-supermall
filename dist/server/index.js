@@ -134,6 +134,42 @@ async function accountRoute(request, env, url) {
     }
     return json({ error: "Method not allowed" }, 405);
   }
+  if (path === "/api/member/conversations") {
+    const token = bearerToken(request), user = await supabaseUser(env, token);
+    if (!user) return json({ error: "Please sign in to continue." }, 401);
+    if (request.method === "GET") {
+      const conversationId = url.searchParams.get("id");
+      if (conversationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return json({ error: "Invalid conversation identifier." }, 400);
+      const query = new URLSearchParams({ select: "id,title,locale,messages,updated_at", order: "updated_at.desc" });
+      if (conversationId) query.set("id", `eq.${conversationId}`);
+      const response = await fetch(`${base}/rest/v1/conversations?${query.toString()}`, { headers: supabaseHeaders(env, token) });
+      const body = await response.json();
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "conversation loading"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+      if (conversationId) return body[0] ? json(body[0]) : json({ error: "Conversation not found." }, 404);
+      return json(body, response.status);
+    }
+    const safeMessages = items => Array.isArray(items) ? items.slice(-50).map(item => ({ question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000) })) : [];
+    if (request.method === "POST") {
+      const { title, locale = "zh", messages = [] } = await request.json();
+      const cleanTitle = String(title || "New conversation").trim().slice(0, 120) || "New conversation";
+      const response = await fetch(`${base}/rest/v1/conversations`, { method: "POST", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ owner_id: user.id, title: cleanTitle, locale: locale === "en" ? "en" : "zh", messages: safeMessages(messages) }) });
+      const body = await response.json();
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "conversation saving"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+      return json(body, response.status);
+    }
+    if (request.method === "PATCH") {
+      const { id, locale = "zh", messages = [] } = await request.json();
+      const conversationId = String(id || "").trim();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return json({ error: "Invalid conversation identifier." }, 400);
+      const query = new URLSearchParams({ id: `eq.${conversationId}`, select: "id,title,locale,messages,updated_at" });
+      const response = await fetch(`${base}/rest/v1/conversations?${query.toString()}`, { method: "PATCH", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ locale: locale === "en" ? "en" : "zh", messages: safeMessages(messages), updated_at: new Date().toISOString() }) });
+      const body = await response.json();
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "conversation updating"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+      if (!body[0]) return json({ error: "Conversation not found." }, 404);
+      return json(body[0], response.status);
+    }
+    return json({ error: "Method not allowed" }, 405);
+  }
   return json({ error: "Not found" }, 404);
 }
 
@@ -147,7 +183,7 @@ export default {
       const chinaReady = Boolean(env.CN_AUTH_URL && env.CN_AUTH_PUBLISHABLE_KEY);
       return json({ region, ready: region === "cn" ? chinaReady : globalReady });
     }
-    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects") {
+    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations") {
       try { return await accountRoute(request, env, url); }
       catch { return json({ error: "The account service is temporarily unavailable." }, 502); }
     }
