@@ -139,3 +139,4 @@ footer{padding:35px 20px;grid-template-columns:1fr}
 .tool-card{min-height:270px}
 .hero h1{font-size:52px}
 }
+@media(max-width:760px){.toast{bottom:calc(94px + env(safe-area-inset-bottom));max-width:calc(100% - 28px);text-align:center}}
