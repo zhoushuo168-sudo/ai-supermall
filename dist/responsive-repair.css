@@ -1,0 +1,18 @@
+@media (max-width:760px) {
+  html{width:100%;max-width:100%}
+  body,body.account-body{width:100%;max-width:100%;min-width:0}
+  main,#top,.nav,.hero,.section,.return-strip,footer,.account-page,.account-panel,.search-answer,.search-box,.studio-launch{min-width:0;max-width:100%}
+  .aurora{display:none}
+  .nav{width:100%;margin:0;padding:calc(10px + env(safe-area-inset-top)) 14px 12px}
+  .hero{width:100%;padding:12px 16px 24px}.hero h1{font-size:clamp(31px,8.3vw,37px);margin:10px 0 12px}.hero-copy{margin-bottom:14px}.eyebrow{font-size:10px}
+  .search-box{width:100%}.studio-launch{width:100%;min-width:0}.studio-launch>*{min-width:0}.studio-launch b,.studio-launch small{overflow-wrap:anywhere}
+  .marquee,#discover{scroll-margin-top:calc(env(safe-area-inset-top) + 12px)}
+  .account-page{width:100%;max-width:100%;margin:0;padding:18px 14px 108px}.account-panel{width:100%;max-width:100%;min-width:0;margin:0;padding:20px 14px}.account-panel>*{min-width:0;max-width:100%}.account-panel h1{font-size:27px;overflow-wrap:anywhere}.account-intro,.account-note,#memberEmail{overflow-wrap:anywhere;word-break:break-word}
+  .member-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:5px}.member-nav a{min-width:0;width:100%;padding:8px 5px;text-align:center;font-size:11px;white-space:normal;overflow-wrap:anywhere}
+  .member-heading{width:100%;min-width:0}.member-heading h2,.member-heading p,#projectsIntro,#chatsIntro,#accountSummary{max-width:100%;overflow-wrap:anywhere;word-break:break-word}.new-project{width:100%;min-width:0}.new-project input,.new-project button{width:100%;max-width:100%}.project-list,.project-item{width:100%;max-width:100%;min-width:0}.project-item strong,.project-item small,.project-open{overflow-wrap:anywhere;word-break:break-word}
+  .search-answer{width:calc(100% - 28px);margin:14px 14px 0;padding:16px}.search-answer>div{display:block;width:100%;min-width:0}.search-answer>div>strong{display:block;width:100%;margin-bottom:11px;white-space:normal;overflow-wrap:anywhere}.search-answer .answer-actions{display:flex;justify-content:flex-start;align-items:center;flex-wrap:wrap;width:100%;gap:7px;margin:0;padding:0;border:0}.search-answer .answer-actions>*{flex:0 0 auto;max-width:100%;white-space:normal}.search-answer .answer-actions a,.search-answer .answer-actions button{overflow-wrap:anywhere}
+  .followup,.followup div{width:100%;min-width:0}.followup textarea{min-width:0;max-width:100%}
+}
+@media (max-width:390px) {
+  .account-page{padding-left:11px;padding-right:11px}.account-panel{padding-left:12px;padding-right:12px}.member-nav a{font-size:10px;padding-left:3px;padding-right:3px}.hero{padding-left:14px;padding-right:14px}.search-answer{width:calc(100% - 24px);margin-left:12px;margin-right:12px}
+}
