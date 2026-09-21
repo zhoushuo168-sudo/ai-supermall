@@ -1,0 +1,6 @@
+@media (max-width:760px){
+  #memberArea:not([hidden]),#accountView:not([hidden]){display:block;width:100%;max-width:100%;min-width:0;margin:0;padding:0}
+  #memberArea:not([hidden]) .member-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;max-width:100%;min-width:0}
+  #memberArea:not([hidden]) .member-nav a{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  #accountView:not([hidden]) .member-heading,#accountView:not([hidden]) #accountSummary,#accountView:not([hidden]) #memberEmail{width:100%;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+}
