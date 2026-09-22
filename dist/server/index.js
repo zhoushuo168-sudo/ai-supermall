@@ -38,17 +38,35 @@ const visualError = (language, message, code = "") => {
   return json({ error: detail, code }, 502);
 };
 async function visualRoute(request, env) {
-  const { prompt = "", language = "zh", images = [] } = await request.json();
+  const { prompt = "", language = "zh", images = [], projectMedia = [], requireImage = false } = await request.json();
   const text = String(prompt).trim().slice(0, 2000), isEnglish = language === "en";
   if (!text) return json({ error: isEnglish ? "Please describe the image you want." : "请描述你想生成或修改的图片。" }, 400);
   const host = imageHost(env.BAILIAN_WORKSPACE_ID);
   if (!env.BAILIAN_API_KEY || !host) return json({ error: isEnglish ? "Image service is not configured." : "图像服务尚未配置。" }, 503);
   const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
   const files = Array.isArray(images) ? images.slice(0, 10).filter(item => allowed.has(item?.type) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 8_000_000) : [];
-  const content = [...files.map(item => ({ image: item.data })), { text }];
+  const token = bearerToken(request), user = Array.isArray(projectMedia) && projectMedia.length ? await supabaseUser(env, token) : null;
+  const paths = Array.isArray(projectMedia) && user ? projectMedia.slice(0, 10).map(value => String(value || "")).filter(path => /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(path) && path.startsWith(`${user.id}/`)) : [];
+  const stored = [];
+  if (paths.length) {
+    const base = env.SUPABASE_URL.replace(/\/$/, "");
+    for (const path of paths) {
+      const signedResponse = await fetch(`${base}/storage/v1/object/sign/project-media/${path}`, { method: "POST", headers: supabaseHeaders(env, token), body: JSON.stringify({ expiresIn: 600 }) });
+      const signedBody = await signedResponse.json().catch(() => ({}));
+      const signed = String(signedBody?.signedURL || signedBody?.signedUrl || "");
+      if (signedResponse.ok && signed) stored.push(/^https:\/\//i.test(signed) ? signed : `${base}/storage/v1${signed.startsWith("/") ? signed : `/${signed}`}`);
+      else console.warn("Bailian image reference could not be signed", { status: signedResponse.status });
+    }
+  }
+  const inputImages = [...files.map(item => item.data), ...stored].slice(0, 10);
+  if (requireImage && !inputImages.length) return json({ error: isEnglish ? "Your reference image was not available. Please reselect it or reopen the project after it finishes loading." : "没有找到可用的原始图片。请重新选择图片，或等待项目恢复完成后重试。" }, 400);
+  const editInstruction = inputImages.length ? (isEnglish ? "This is an image-editing task. Use the first input image as the original. Preserve its scene, subject, composition, architecture, trees, objects, and identity. Make only the changes explicitly requested by the user. Do not invent an unrelated scene." : "这是图像编辑任务。必须以第 1 张输入图片为原图，保留原始场景、主体、构图、建筑、树木和物体；只执行用户明确要求的修改，不要生成无关的新场景。") : "";
+  const content = [...inputImages.map(image => ({ image })), { text: editInstruction ? `${text}\n\n${editInstruction}` : text }];
+  const model = env.BAILIAN_IMAGE_MODEL || "wan2.7-image", mode = inputImages.length ? "image_editing" : "text_to_image";
+  console.info("Bailian image request", { model, mode, directImageCount: files.length, storedImageCount: stored.length, inputImageCount: inputImages.length });
   const response = await fetch(`https://${host}/api/v1/services/aigc/multimodal-generation/generation`, {
     method: "POST", headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: env.BAILIAN_IMAGE_MODEL || "wan2.7-image", input: { messages: [{ role: "user", content }] }, parameters: { size: "1024*1024", n: 1, watermark: false } })
+    body: JSON.stringify({ model, input: { messages: [{ role: "user", content }] }, parameters: { size: "1024*1024", n: 1, watermark: false } })
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -58,7 +76,7 @@ async function visualRoute(request, env) {
   }
   const resultImages = (body?.output?.choices || []).flatMap(choice => choice?.message?.content || []).filter(item => item?.type === "image" && typeof item.image === "string").map(item => item.image);
   if (!resultImages.length) return visualError(language, "Image service returned no image.");
-  return json({ answer: isEnglish ? "The image model created a result." : "图像模型已生成结果。", images: resultImages, generation: { provider: "bailian", model: env.BAILIAN_IMAGE_MODEL || "wan2.7-image" } });
+  return json({ answer: mode === "image_editing" ? (isEnglish ? "The image editing model created a result from your reference image." : "图像编辑模型已根据你的原图生成结果。") : (isEnglish ? "The image model created a result." : "图像模型已生成结果。"), images: resultImages, generation: { provider: "bailian", model, mode, inputImageCount: inputImages.length } });
 }
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
@@ -103,7 +121,7 @@ const safeProjectConversation = items => {
   const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
   const messages = items.filter(item => item?.type !== "workspace_state").slice(-30).map(item => ({
     question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images),
-    generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), status: "completed" } : undefined
+    generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), mode: item.generation.mode === "image_editing" ? "image_editing" : "text_to_image", inputImageCount: Math.max(0, Math.min(10, Number(item.generation.inputImageCount) || 0)), status: "completed" } : undefined
   }));
   return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), uploads: safeProjectMedia(state.uploads) }, ...messages] : messages;
 };
