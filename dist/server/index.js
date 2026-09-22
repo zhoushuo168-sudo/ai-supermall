@@ -44,7 +44,7 @@ async function visualRoute(request, env) {
   const host = imageHost(env.BAILIAN_WORKSPACE_ID);
   if (!env.BAILIAN_API_KEY || !host) return json({ error: isEnglish ? "Image service is not configured." : "图像服务尚未配置。" }, 503);
   const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
-  const files = Array.isArray(images) ? images.slice(0, 10).filter(item => allowed.has(item?.type) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 8_000_000) : [];
+  const files = Array.isArray(images) ? images.slice(0, 10).filter(item => allowed.has(item?.type) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 28_000_000) : [];
   const token = bearerToken(request), user = Array.isArray(projectMedia) && projectMedia.length ? await supabaseUser(env, token) : null;
   const paths = Array.isArray(projectMedia) && user ? projectMedia.slice(0, 10).map(value => String(value || "")).filter(path => /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(path) && path.startsWith(`${user.id}/`)) : [];
   const stored = [];
