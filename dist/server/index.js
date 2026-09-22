@@ -25,6 +25,32 @@ const taskInstruction = (taskType, isEnglish) => {
     : { image_creation: "最终图像生成工具尚未接入。请帮助准备详细图像提示词、风格方向和构图；不要声称已生成图片文件。", presentation: "最终演示文稿生成工具尚未接入。请帮助准备 PPT 大纲和逐页内容；不要声称已生成 PPT 文件。", video: "最终视频或音频生成工具尚未接入。请帮助准备脚本、分镜和制作提示词；不要声称已生成媒体文件。", writing: "请直接帮助完成用户需要的写作、计划、总结、翻译或大纲。", productivity: "请把用户目标转化为可执行的下一步和实用工作成果。" };
   return instructions[taskType] || "";
 };
+const imageHost = value => {
+  const clean = String(value || "").trim().replace(/^https:\/\//, "").replace(/\/$/, "");
+  if (/^[a-z0-9-]+\.ap-southeast-1\.maas\.aliyuncs\.com$/i.test(clean)) return clean;
+  if (/^[a-z0-9_-]+$/i.test(clean)) return `${clean}.ap-southeast-1.maas.aliyuncs.com`;
+  return "";
+};
+const visualError = (language, message) => json({ error: language === "en" ? message : "图像服务暂时不可用，请稍后重试。" }, 502);
+async function visualRoute(request, env) {
+  const { prompt = "", language = "zh", images = [] } = await request.json();
+  const text = String(prompt).trim().slice(0, 2000), isEnglish = language === "en";
+  if (!text) return json({ error: isEnglish ? "Please describe the image you want." : "请描述你想生成或修改的图片。" }, 400);
+  const host = imageHost(env.BAILIAN_WORKSPACE_ID);
+  if (!env.BAILIAN_API_KEY || !host) return json({ error: isEnglish ? "Image service is not configured." : "图像服务尚未配置。" }, 503);
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const files = Array.isArray(images) ? images.slice(0, 10).filter(item => allowed.has(item?.type) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 8_000_000) : [];
+  const content = [...files.map(item => ({ image: item.data })), { text }];
+  const response = await fetch(`https://${host}/api/v1/services/aigc/multimodal-generation/generation`, {
+    method: "POST", headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: env.BAILIAN_IMAGE_MODEL || "wan2.7-image", input: { messages: [{ role: "user", content }] }, parameters: { size: "1024*1024", n: 1, watermark: false } })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) { console.error("Bailian image request failed", { status: response.status, code: body?.code || body?.error_code || "" }); return visualError(language, "Image service is temporarily unavailable."); }
+  const resultImages = (body?.output?.choices || []).flatMap(choice => choice?.message?.content || []).filter(item => item?.type === "image" && typeof item.image === "string").map(item => item.image);
+  if (!resultImages.length) return visualError(language, "Image service returned no image.");
+  return json({ answer: isEnglish ? "Your image is ready." : "图片已生成。", images: resultImages });
+}
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
   const code = String(body?.code || body?.error_code || "").trim();
@@ -242,6 +268,11 @@ export default {
         console.error("Bailian model request error", { message: error instanceof Error ? error.message : String(error) });
         return json({ error: "AI service is temporarily unavailable." }, 502);
       }
+    }
+    if (url.pathname === "/api/visual/generate") {
+      if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      try { return await visualRoute(request, env); }
+      catch (error) { console.error("Bailian image request error", { message: error instanceof Error ? error.message : String(error) }); return visualError("zh", "Image service is temporarily unavailable."); }
     }
     return env.ASSETS.fetch(request);
   }
