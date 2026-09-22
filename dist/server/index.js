@@ -58,7 +58,7 @@ async function visualRoute(request, env) {
   }
   const resultImages = (body?.output?.choices || []).flatMap(choice => choice?.message?.content || []).filter(item => item?.type === "image" && typeof item.image === "string").map(item => item.image);
   if (!resultImages.length) return visualError(language, "Image service returned no image.");
-  return json({ answer: isEnglish ? "Your image is ready." : "图片已生成。", images: resultImages });
+  return json({ answer: isEnglish ? "The image model created a result." : "图像模型已生成结果。", images: resultImages, generation: { provider: "bailian", model: env.BAILIAN_IMAGE_MODEL || "wan2.7-image" } });
 }
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
@@ -102,7 +102,8 @@ const safeProjectConversation = items => {
   if (!Array.isArray(items)) return [];
   const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
   const messages = items.filter(item => item?.type !== "workspace_state").slice(-30).map(item => ({
-    question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images)
+    question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images),
+    generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), status: "completed" } : undefined
   }));
   return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), uploads: safeProjectMedia(state.uploads) }, ...messages] : messages;
 };
