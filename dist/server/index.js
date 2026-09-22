@@ -18,6 +18,13 @@ const supabaseHeaders = (env, token) => ({
 });
 const safeEmail = email => String(email || "").trim().toLowerCase().slice(0, 254);
 const safePassword = password => String(password || "");
+const routeModel = text => /\b(code|coding|program|debug|algorithm|math|mathematics|equation|proof|technical|architecture)\b|代码|编程|调试|算法|数学|方程|证明|技术分析|架构/i.test(text) ? "deepseek" : "qwen";
+const taskInstruction = (taskType, isEnglish) => {
+  const instructions = isEnglish
+    ? { visuals: "The final image generator is not connected. Help prepare a detailed image prompt, style direction, and composition; do not claim an image file was created.", presentations: "The final presentation generator is not connected. Help prepare a slide outline and slide-by-slide content; do not claim a PPT file was created.", video: "The final video or audio generator is not connected. Help prepare a script, storyboard, and production prompt; do not claim a media file was created.", writing: "Help produce the requested writing, plan, summary, translation, or outline directly.", work: "Help turn the user's goal into practical next steps and useful work." }
+    : { visuals: "最终图像生成工具尚未接入。请帮助准备详细图像提示词、风格方向和构图；不要声称已生成图片文件。", presentations: "最终演示文稿生成工具尚未接入。请帮助准备 PPT 大纲和逐页内容；不要声称已生成 PPT 文件。", video: "最终视频或音频生成工具尚未接入。请帮助准备脚本、分镜和制作提示词；不要声称已生成媒体文件。", writing: "请直接帮助完成用户需要的写作、计划、总结、翻译或大纲。", work: "请把用户目标转化为可执行的下一步和实用工作成果。" };
+  return instructions[taskType] || "";
+};
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
   const code = String(body?.code || body?.error_code || "").trim();
@@ -190,17 +197,18 @@ export default {
     if (url.pathname === "/api/recommend") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
       try {
-        const { query = "", language = "zh", context = [], model = "qwen" } = await request.json();
+        const { query = "", language = "zh", context = [], taskType = "general" } = await request.json();
         const text = String(query).trim().slice(0, 500);
         if (!text) return json({ error: language === "en" ? "Please enter a question." : "请先输入你的问题。" }, 400);
         if (!env.BAILIAN_API_KEY) return json({ error: language === "en" ? "AI service is not configured." : "AI 服务尚未连接。" }, 503);
         const isEnglish = language === "en";
-        const modelKey = model === "deepseek" ? "deepseek" : "qwen";
+        const modelKey = routeModel(text);
         const modelId = modelKey === "deepseek" ? (env.BAILIAN_DEEPSEEK_MODEL || "deepseek-v4.1-flash") : (env.BAILIAN_MODEL || "qwen3.8-flash");
+        const taskHelp = taskInstruction(String(taskType), isEnglish);
         const earlier = Array.isArray(context) ? context.slice(-4).map(item => `Q: ${String(item.question || "").slice(0, 300)}\nA: ${String(item.answer || "").slice(0, 500)}`).join("\n") : "";
         const prompt = isEnglish
-          ? `You are the helpful AI assistant inside AI SuperMall. Continue the conversation using the earlier context when it is relevant. Answer in English, directly and practically. For medical, legal, or investment decisions, include a brief safety note. Return JSON only: {"title":"","answer":"","recommendation":""}. Keep answer under 90 words. Earlier context: ${earlier || "None"}. User: ${text}`
-          : `你是 AI SuperMall 里的贴心 AI 助手。若有此前对话，请结合上下文继续回答。请用简体中文直接、实用地回答。涉及医疗、法律或投资决策时，附上简短风险提示。严格只返回 JSON：{"title":"","answer":"","recommendation":""}。answer 不超过90字。此前对话：${earlier || "无"}。用户：${text}`;
+          ? `You are the helpful AI assistant inside AI SuperMall. Continue the conversation using the earlier context when it is relevant. Answer in English, directly and practically. For medical, legal, or investment decisions, include a brief safety note. ${taskHelp} Return JSON only: {"title":"","answer":"","recommendation":""}. Keep answer under 90 words. Earlier context: ${earlier || "None"}. User: ${text}`
+          : `你是 AI SuperMall 里的贴心 AI 助手。若有此前对话，请结合上下文继续回答。请用简体中文直接、实用地回答。涉及医疗、法律或投资决策时，附上简短风险提示。${taskHelp} 严格只返回 JSON：{"title":"","answer":"","recommendation":""}。answer 不超过90字。此前对话：${earlier || "无"}。用户：${text}`;
         const base = (env.BAILIAN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
         const upstream = await fetch(`${base}/chat/completions`, {
           method: "POST",
@@ -216,8 +224,8 @@ export default {
         let result = JSON.parse(payload.choices?.[0]?.message?.content || "{}");
         if (!String(result.answer || "").trim()) {
           const retryPrompt = isEnglish
-            ? `Give a direct, practical answer in English to this question. Use the earlier context when helpful. Do not use JSON or headings. Keep it under 90 words. Earlier context: ${earlier || "None"}. Question: ${text}`
-            : `请直接、实用地用简体中文回答这个问题。需要时结合此前对话。不要输出 JSON 或标题。回答不超过90字。此前对话：${earlier || "无"}。问题：${text}`;
+            ? `Give a direct, practical answer in English to this question. ${taskHelp} Use the earlier context when helpful. Do not use JSON or headings. Keep it under 90 words. Earlier context: ${earlier || "None"}. Question: ${text}`
+            : `请直接、实用地用简体中文回答这个问题。${taskHelp} 需要时结合此前对话。不要输出 JSON 或标题。回答不超过90字。此前对话：${earlier || "无"}。问题：${text}`;
           const retry = await fetch(`${base}/chat/completions`, {
             method: "POST",
             headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },

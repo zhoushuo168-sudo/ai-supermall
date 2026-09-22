@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=model-select-1">
+<link rel="stylesheet" href="style.css?v=task-flow-1">
 <link rel="stylesheet" href="project.css">
 <link rel="stylesheet" href="mobile-member-nav.css">
 <link rel="stylesheet" href="mobile-ui.css">
@@ -60,7 +60,7 @@
 <button class="voice-button" id="voiceButton" type="button" aria-label="语音输入" title="语音输入">◉</button>
 <button type="submit" data-i18n="searchButton">开始</button>
 </form>
-<label class="model-selector" for="modelSelector"><span data-i18n="modelLabel">选择模型</span><select id="modelSelector" aria-label="选择模型"><option value="qwen" data-i18n="modelQwen">通义千问</option><option value="deepseek" data-i18n="modelDeepSeek">DeepSeek</option></select></label>
+<p class="task-guide" id="taskGuide" aria-live="polite" hidden></p>
 <p class="voice-status" id="mainVoiceStatus" aria-live="polite" hidden></p>
 <section class="search-answer" id="searchAnswer" hidden>
 <p class="kicker" id="answerKicker">AI SUPER MALL · GUIDE</p>
@@ -132,7 +132,7 @@
 </a>
 </div>
 <div class="tool-grid" id="toolGrid">
-<article class="tool-card pink" data-tags="图片 设计 生成 创作">
+<article class="tool-card pink task-entry" data-task="visuals" data-tags="图片 设计 生成 创作">
 <div class="card-top">
 <span class="app-icon icon-mid">◒</span>
 <span class="featured" data-i18n="midBadge">热门</span>
@@ -147,7 +147,7 @@
 <span>↗</span>
 </button>
 </article>
-<article class="tool-card blue" data-tags="写作 对话 办公 学习 文章">
+<article class="tool-card blue task-entry" data-task="writing" data-tags="写作 对话 办公 学习 文章">
 <div class="card-top">
 <span class="app-icon icon-chat">✳</span>
 <span class="featured" data-i18n="chatBadge">必备</span>
@@ -162,7 +162,7 @@
 <span>↗</span>
 </button>
 </article>
-<article class="tool-card yellow" data-tags="演示文稿 幻灯片 设计 办公">
+<article class="tool-card yellow task-entry" data-task="presentations" data-tags="演示文稿 幻灯片 设计 办公">
 <div class="card-top">
 <span class="app-icon icon-gamma">G</span>
 <span class="featured" data-i18n="gammaBadge">新上架</span>
@@ -177,7 +177,7 @@
 <span>↗</span>
 </button>
 </article>
-<article class="tool-card violet" data-tags="视频 剪辑 生成 创作">
+<article class="tool-card violet task-entry" data-task="video" data-tags="视频 剪辑 生成 创作">
 <div class="card-top">
 <span class="app-icon icon-runway">R</span>
 <span class="featured" data-i18n="runwayBadge">趋势</span>
@@ -203,25 +203,25 @@
 </div>
 </div>
 <div class="category-grid">
-<button class="category-card coral" data-query="生成图片" data-i18n-query="quickImage">
+<button class="category-card coral task-entry" data-task="visuals">
 <span>✦</span>
 <strong data-i18n="catImage">图像创作</strong>
 <small data-i18n="catImageCount">124 个工具</small>
 <i>→</i>
 </button>
-<button class="category-card lilac" data-query="写作" data-i18n-query="catWritingQuery">
+<button class="category-card lilac task-entry" data-task="writing">
 <span>⌁</span>
 <strong data-i18n="catWriting">写作与对话</strong>
 <small data-i18n="catWritingCount">86 个工具</small>
 <i>→</i>
 </button>
-<button class="category-card sky" data-query="视频" data-i18n-query="catVideoQuery">
+<button class="category-card sky task-entry" data-task="video">
 <span>◉</span>
 <strong data-i18n="catVideo">视频与音频</strong>
 <small data-i18n="catVideoCount">58 个工具</small>
 <i>→</i>
 </button>
-<button class="category-card mint" data-query="办公" data-i18n-query="catWorkQuery">
+<button class="category-card mint task-entry" data-task="work">
 <span>▣</span>
 <strong data-i18n="catWork">效率与办公</strong>
 <small data-i18n="catWorkCount">102 个工具</small>
@@ -322,7 +322,7 @@
 </footer>
 <div class="toast" id="toast">
 </div>
-<script src="script.js?v=vision-3">
+<script src="script.js?v=task-flow-1">
 </script>
 <script src="voice-merge.js"></script>
 <script src="input-experience.js"></script>
