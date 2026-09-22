@@ -90,6 +90,77 @@ async function supabaseUser(env, token) {
   return response.ok ? response.json() : null;
 }
 
+const projectIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const mediaTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const safeProjectMedia = media => Array.isArray(media) ? media.slice(0, 10).map(item => ({
+  path: String(item?.path || "").slice(0, 500),
+  name: String(item?.name || "image").slice(0, 180),
+  type: mediaTypes.has(item?.type) ? item.type : "image/png",
+  kind: item?.kind === "generated" ? "generated" : "reference"
+})).filter(item => /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(item.path)) : [];
+const safeProjectConversation = items => {
+  if (!Array.isArray(items)) return [];
+  const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
+  const messages = items.filter(item => item?.type !== "workspace_state").slice(-30).map(item => ({
+    question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images)
+  }));
+  return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), uploads: safeProjectMedia(state.uploads) }, ...messages] : messages;
+};
+const bytesFromDataUrl = value => {
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=\s]+)$/i.exec(String(value || ""));
+  if (!match || !mediaTypes.has(match[1].toLowerCase())) return null;
+  const raw = atob(match[2].replace(/\s/g, ""));
+  if (raw.length > 20 * 1024 * 1024) return null;
+  const bytes = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+  return { bytes, type: match[1].toLowerCase() };
+};
+const mediaExtension = type => type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png";
+const mediaPathFor = (userId, projectId, type) => `${userId}/${projectId}/${crypto.randomUUID()}.${mediaExtension(type)}`;
+const signedStorageUrl = (base, signed) => /^https:\/\//i.test(signed) ? signed : `${base}/storage/v1${signed.startsWith("/") ? signed : `/${signed}`}`;
+
+async function projectMediaRoute(request, env, token, user, url) {
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  if (request.method === "GET") {
+    const path = String(url.searchParams.get("path") || "");
+    if (!path.startsWith(`${user.id}/`)) return json({ error: "Media not found." }, 404);
+    const response = await fetch(`${base}/storage/v1/object/sign/project-media/${path}`, {
+      method: "POST", headers: supabaseHeaders(env, token), body: JSON.stringify({ expiresIn: 3600 })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) return json({ error: supabaseError(body, response.status, "media loading") }, response.status);
+    const signed = String(body?.signedURL || body?.signedUrl || "");
+    if (!signed) return json({ error: "Media signing failed." }, 502);
+    return json({ url: signedStorageUrl(base, signed) });
+  }
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const { projectId, media = [] } = await request.json();
+  const id = String(projectId || "");
+  if (!projectIdPattern.test(id)) return json({ error: "Invalid project identifier." }, 400);
+  const own = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}`, { headers: supabaseHeaders(env, token) });
+  const projects = await own.json().catch(() => []);
+  if (!own.ok || !projects[0]) return json({ error: "Project not found." }, 404);
+  const saved = [];
+  for (const item of Array.isArray(media) ? media.slice(0, 20) : []) {
+    let asset = bytesFromDataUrl(item?.data), type = asset?.type;
+    if (!asset && /^https:\/\//i.test(String(item?.url || ""))) {
+      const remote = await fetch(String(item.url));
+      const remoteType = String(remote.headers.get("content-type") || "").split(";")[0].toLowerCase();
+      const blob = remote.ok && mediaTypes.has(remoteType) ? await remote.arrayBuffer() : null;
+      if (blob && blob.byteLength <= 20 * 1024 * 1024) asset = { bytes: new Uint8Array(blob), type: remoteType }, type = remoteType;
+    }
+    if (!asset || !type) return json({ error: "One image could not be saved. Please use a JPG, PNG, or WEBP image under 20 MB." }, 400);
+    const path = mediaPathFor(user.id, id, type);
+    const upload = await fetch(`${base}/storage/v1/object/project-media/${path}`, {
+      method: "POST", headers: { ...supabaseHeaders(env, token), "Content-Type": type, "x-upsert": "false" }, body: asset.bytes
+    });
+    const body = await upload.json().catch(() => ({}));
+    if (!upload.ok) return json({ error: supabaseError(body, upload.status, "media saving") }, upload.status);
+    saved.push({ clientId: String(item?.clientId || ""), path, name: String(item?.name || `image.${mediaExtension(type)}`).slice(0, 180), type, kind: item?.kind === "generated" ? "generated" : "reference" });
+  }
+  return json({ media: saved });
+}
+
 async function accountRoute(request, env, url) {
   const region = accountRegionFor(request, url);
   if (region !== "global" || !globalAccountReady(env)) return accountUnavailable(region);
@@ -139,6 +210,11 @@ async function accountRoute(request, env, url) {
   if (path === "/api/account/logout" && request.method === "POST") {
     return sessionResponse({ signedIn: false }, "", 0);
   }
+  if (path === "/api/member/project-media") {
+    const token = bearerToken(request), user = await supabaseUser(env, token);
+    if (!user) return json({ error: "Please sign in to continue." }, 401);
+    return projectMediaRoute(request, env, token, user, url);
+  }
   if (path === "/api/member/projects") {
     const token = bearerToken(request), user = await supabaseUser(env, token);
     if (!user) return json({ error: "Please sign in to continue." }, 401);
@@ -156,7 +232,7 @@ async function accountRoute(request, env, url) {
     if (request.method === "POST") {
       const { title, locale = "zh", conversation = [] } = await request.json();
       const cleanTitle = String(title || "Untitled project").trim().slice(0, 120) || "Untitled project";
-      const safeConversation = Array.isArray(conversation) ? conversation.slice(-30).map(item => ({ question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000) })) : [];
+      const safeConversation = safeProjectConversation(conversation);
       const response = await fetch(`${base}/rest/v1/projects`, { method: "POST", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ owner_id: user.id, title: cleanTitle, locale: locale === "en" ? "en" : "zh", conversation: safeConversation }) });
       const body = await response.json();
       if (!response.ok) return json({ error: supabaseError(body, response.status, "project saving"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
@@ -166,7 +242,7 @@ async function accountRoute(request, env, url) {
       const { id, locale = "zh", conversation = [] } = await request.json();
       const projectId = String(id || "").trim();
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
-      const safeConversation = Array.isArray(conversation) ? conversation.slice(-30).map(item => ({ question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000) })) : [];
+      const safeConversation = safeProjectConversation(conversation);
       const query = new URLSearchParams({ id: `eq.${projectId}`, select: "id,title,locale,conversation,updated_at" });
       const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { method: "PATCH", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ locale: locale === "en" ? "en" : "zh", conversation: safeConversation, updated_at: new Date().toISOString() }) });
       const body = await response.json();
@@ -225,7 +301,7 @@ export default {
       const chinaReady = Boolean(env.CN_AUTH_URL && env.CN_AUTH_PUBLISHABLE_KEY);
       return json({ region, ready: region === "cn" ? chinaReady : globalReady });
     }
-    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations") {
+    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations" || url.pathname === "/api/member/project-media") {
       try { return await accountRoute(request, env, url); }
       catch { return json({ error: "The account service is temporarily unavailable." }, 502); }
     }
