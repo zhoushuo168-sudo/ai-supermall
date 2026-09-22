@@ -31,7 +31,12 @@ const imageHost = value => {
   if (/^[a-z0-9_-]+$/i.test(clean)) return `${clean}.ap-southeast-1.maas.aliyuncs.com`;
   return "";
 };
-const visualError = (language, message) => json({ error: language === "en" ? message : "图像服务暂时不可用，请稍后重试。" }, 502);
+const visualError = (language, message, code = "") => {
+  const detail = code === "InvalidParameter"
+    ? (language === "en" ? "The image or request parameters are not supported. Please try a normal JPG, PNG, or WEBP image." : "图片或请求参数不符合模型要求。请使用正常尺寸的 JPG、PNG 或 WEBP 图片后重试。")
+    : (language === "en" ? message : "图像服务暂时不可用，请稍后重试。");
+  return json({ error: detail, code }, 502);
+};
 async function visualRoute(request, env) {
   const { prompt = "", language = "zh", images = [] } = await request.json();
   const text = String(prompt).trim().slice(0, 2000), isEnglish = language === "en";
@@ -46,7 +51,11 @@ async function visualRoute(request, env) {
     body: JSON.stringify({ model: env.BAILIAN_IMAGE_MODEL || "wan2.7-image", input: { messages: [{ role: "user", content }] }, parameters: { size: "1024*1024", n: 1, watermark: false } })
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) { console.error("Bailian image request failed", { status: response.status, code: body?.code || body?.error_code || "" }); return visualError(language, "Image service is temporarily unavailable."); }
+  if (!response.ok) {
+    const code = String(body?.code || body?.error_code || "");
+    console.error("Bailian image request failed", { status: response.status, code });
+    return visualError(language, "Image service is temporarily unavailable.", code);
+  }
   const resultImages = (body?.output?.choices || []).flatMap(choice => choice?.message?.content || []).filter(item => item?.type === "image" && typeof item.image === "string").map(item => item.image);
   if (!resultImages.length) return visualError(language, "Image service returned no image.");
   return json({ answer: isEnglish ? "Your image is ready." : "图片已生成。", images: resultImages });
