@@ -37,6 +37,51 @@ const visualError = (language, message, code = "") => {
     : (language === "en" ? message : "图像服务暂时不可用，请稍后重试。");
   return json({ error: detail, code }, 502);
 };
+const ossConfigured = env => Boolean(env.ALIBABA_CLOUD_ACCESS_KEY_ID && env.ALIBABA_CLOUD_ACCESS_KEY_SECRET && env.ALIBABA_OSS_BUCKET && env.ALIBABA_OSS_REGION && env.ALIBABA_OSS_ENDPOINT);
+const ossText = value => new TextEncoder().encode(String(value));
+const ossHex = bytes => Array.from(new Uint8Array(bytes)).map(value => value.toString(16).padStart(2, "0")).join("");
+const ossHash = async value => ossHex(await crypto.subtle.digest("SHA-256", ossText(value)));
+const ossHmac = async (key, value) => new Uint8Array(await crypto.subtle.sign("HMAC", await crypto.subtle.importKey("raw", key instanceof Uint8Array ? key : ossText(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]), ossText(value)));
+const ossEncode = value => String(value).split("/").map(part => encodeURIComponent(part).replace(/%7E/gi, "~")).join("/");
+const ossDate = now => {
+  const iso = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  return { stamp: iso, day: iso.slice(0, 8) };
+};
+const ossEndpoint = env => String(env.ALIBABA_OSS_ENDPOINT || "").replace(/^https?:\/\//i, "").replace(/\/$/, "");
+const ossObjectKeyPattern = /^[a-z]+\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|jpeg|png|webp)$/i;
+const ossObjectKeyFor = (userId, projectId, type, kind = "original") => `${kind}/${userId}/${projectId}/${crypto.randomUUID()}.${mediaExtension(type)}`;
+async function ossPresignedUrl(env, method, objectKey, expires = 600) {
+  if (!ossConfigured(env)) throw new Error("OSS storage is not configured.");
+  const host = `${env.ALIBABA_OSS_BUCKET}.${ossEndpoint(env)}`, { stamp, day } = ossDate(new Date());
+  const scope = `${day}/${env.ALIBABA_OSS_REGION}/oss/aliyun_v4_request`;
+  const query = new URLSearchParams({
+    "x-oss-additional-headers": "host",
+    "x-oss-credential": `${env.ALIBABA_CLOUD_ACCESS_KEY_ID}/${scope}`,
+    "x-oss-date": stamp,
+    "x-oss-expires": String(Math.max(1, Math.min(604800, expires))),
+    "x-oss-signature-version": "OSS4-HMAC-SHA256"
+  });
+  const canonicalQuery = Array.from(query.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
+  const canonical = [method, `/${ossEncode(objectKey)}`, canonicalQuery, `host:${host}\n`, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const signingDate = await ossHmac(`aliyun_v4${env.ALIBABA_CLOUD_ACCESS_KEY_SECRET}`, day);
+  const signingRegion = await ossHmac(signingDate, env.ALIBABA_OSS_REGION);
+  const signingService = await ossHmac(signingRegion, "oss");
+  const signingKey = await ossHmac(signingService, "aliyun_v4_request");
+  const signature = ossHex(await ossHmac(signingKey, `OSS4-HMAC-SHA256\n${stamp}\n${scope}\n${await ossHash(canonical)}`));
+  query.set("x-oss-signature", signature);
+  return `https://${host}/${ossEncode(objectKey)}?${query.toString()}`;
+}
+const normalizeMediaDescriptor = item => {
+  const provider = item?.provider === "oss" ? "oss" : "supabase";
+  const path = String(item?.path || item?.key || "").slice(0, 500);
+  return {
+    provider, path,
+    name: String(item?.name || "image").slice(0, 180),
+    type: mediaTypes.has(item?.type) ? item.type : "image/png",
+    kind: item?.kind === "generated" ? "generated" : "reference"
+  };
+};
+const validMediaDescriptor = item => item.provider === "oss" ? ossObjectKeyPattern.test(item.path) : /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(item.path);
 async function visualRoute(request, env) {
   const { prompt = "", language = "zh", images = [], projectMedia = [], requireImage = false } = await request.json();
   const text = String(prompt).trim().slice(0, 2000), isEnglish = language === "en";
@@ -46,12 +91,17 @@ async function visualRoute(request, env) {
   const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
   const files = Array.isArray(images) ? images.slice(0, 10).filter(item => allowed.has(item?.type) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 28_000_000) : [];
   const token = bearerToken(request), user = Array.isArray(projectMedia) && projectMedia.length ? await supabaseUser(env, token) : null;
-  const paths = Array.isArray(projectMedia) && user ? projectMedia.slice(0, 10).map(value => String(value || "")).filter(path => /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(path) && path.startsWith(`${user.id}/`)) : [];
+  const references = Array.isArray(projectMedia) && user ? projectMedia.slice(0, 10).map(normalizeMediaDescriptor).filter(item => validMediaDescriptor(item) && (item.provider === "oss" ? item.path.startsWith(`original/${user.id}/`) : item.path.startsWith(`${user.id}/`))) : [];
   const stored = [];
-  if (paths.length) {
+  if (references.length) {
     const base = env.SUPABASE_URL.replace(/\/$/, "");
-    for (const path of paths) {
-      const signedResponse = await fetch(`${base}/storage/v1/object/sign/project-media/${path}`, { method: "POST", headers: supabaseHeaders(env, token), body: JSON.stringify({ expiresIn: 600 }) });
+    for (const reference of references) {
+      if (reference.provider === "oss") {
+        try { stored.push(await ossPresignedUrl(env, "GET", reference.path, 600)); }
+        catch (error) { console.warn("Bailian OSS image reference could not be signed", { message: error instanceof Error ? error.message : "signing failed" }); }
+        continue;
+      }
+      const signedResponse = await fetch(`${base}/storage/v1/object/sign/project-media/${reference.path}`, { method: "POST", headers: supabaseHeaders(env, token), body: JSON.stringify({ expiresIn: 600 }) });
       const signedBody = await signedResponse.json().catch(() => ({}));
       const signed = String(signedBody?.signedURL || signedBody?.signedUrl || "");
       if (signedResponse.ok && signed) stored.push(/^https:\/\//i.test(signed) ? signed : `${base}/storage/v1${signed.startsWith("/") ? signed : `/${signed}`}`);
@@ -110,12 +160,7 @@ async function supabaseUser(env, token) {
 
 const projectIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-const safeProjectMedia = media => Array.isArray(media) ? media.slice(0, 10).map(item => ({
-  path: String(item?.path || "").slice(0, 500),
-  name: String(item?.name || "image").slice(0, 180),
-  type: mediaTypes.has(item?.type) ? item.type : "image/png",
-  kind: item?.kind === "generated" ? "generated" : "reference"
-})).filter(item => /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(item.path)) : [];
+const safeProjectMedia = media => Array.isArray(media) ? media.slice(0, 10).map(normalizeMediaDescriptor).filter(validMediaDescriptor) : [];
 const safeProjectConversation = items => {
   if (!Array.isArray(items)) return [];
   const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
@@ -190,6 +235,36 @@ async function projectMediaRoute(request, env, token, user, url) {
   return json({ media: saved });
 }
 
+async function ossMediaRoute(request, env, token, user, url) {
+  if (!ossConfigured(env)) return json({ error: "Private OSS storage is not configured yet." }, 503);
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  if (request.method === "GET") {
+    const provider = String(url.searchParams.get("provider") || ""), path = String(url.searchParams.get("path") || "");
+    if (provider !== "oss" || !ossObjectKeyPattern.test(path) || !path.startsWith(`original/${user.id}/`)) return json({ error: "Media not found." }, 404);
+    try { return json({ url: await ossPresignedUrl(env, "GET", path, 3600), provider: "oss", path }); }
+    catch (error) { console.error("OSS media signing failed", { message: error instanceof Error ? error.message : "unknown" }); return json({ error: "Private media preview is temporarily unavailable." }, 502); }
+  }
+  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+  const { projectId, name, type, size, kind = "reference" } = await request.json().catch(() => ({}));
+  const id = String(projectId || ""), cleanType = String(type || "").toLowerCase(), bytes = Number(size || 0);
+  if (!projectIdPattern.test(id) || !mediaTypes.has(cleanType) || !Number.isFinite(bytes) || bytes <= 0 || bytes > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
+  const owned = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}`, { headers: supabaseHeaders(env, token) });
+  const projects = await owned.json().catch(() => []);
+  if (!owned.ok || !projects[0]) return json({ error: "Project not found." }, 404);
+  const path = ossObjectKeyFor(user.id, id, cleanType, kind === "generated" ? "generated" : "original");
+  try {
+    return json({
+      provider: "oss", path,
+      uploadUrl: await ossPresignedUrl(env, "PUT", path, 600),
+      headers: {},
+      media: { provider: "oss", path, name: String(name || `image.${mediaExtension(cleanType)}`).slice(0, 180), type: cleanType, kind: kind === "generated" ? "generated" : "reference" }
+    });
+  } catch (error) {
+    console.error("OSS upload authorization failed", { message: error instanceof Error ? error.message : "unknown" });
+    return json({ error: "Private upload authorization is temporarily unavailable." }, 502);
+  }
+}
+
 async function accountRoute(request, env, url) {
   const region = accountRegionFor(request, url);
   if (region !== "global" || !globalAccountReady(env)) return accountUnavailable(region);
@@ -243,6 +318,11 @@ async function accountRoute(request, env, url) {
     const token = bearerToken(request), user = await supabaseUser(env, token);
     if (!user) return json({ error: "Please sign in to continue." }, 401);
     return projectMediaRoute(request, env, token, user, url);
+  }
+  if (path === "/api/member/oss-media") {
+    const token = bearerToken(request), user = await supabaseUser(env, token);
+    if (!user) return json({ error: "Please sign in to continue." }, 401);
+    return ossMediaRoute(request, env, token, user, url);
   }
   if (path === "/api/member/projects") {
     const token = bearerToken(request), user = await supabaseUser(env, token);
@@ -330,7 +410,7 @@ export default {
       const chinaReady = Boolean(env.CN_AUTH_URL && env.CN_AUTH_PUBLISHABLE_KEY);
       return json({ region, ready: region === "cn" ? chinaReady : globalReady });
     }
-    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations" || url.pathname === "/api/member/project-media") {
+    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations" || url.pathname === "/api/member/project-media" || url.pathname === "/api/member/oss-media") {
       try { return await accountRoute(request, env, url); }
       catch { return json({ error: "The account service is temporarily unavailable." }, 502); }
     }
