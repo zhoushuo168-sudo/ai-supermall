@@ -62,7 +62,7 @@ async function ossPresignedUrl(env, method, objectKey, expires = 600) {
     "x-oss-signature-version": "OSS4-HMAC-SHA256"
   });
   const canonicalQuery = Array.from(query.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
-  const canonical = [method, `/${ossEncode(objectKey)}`, canonicalQuery, `host:${host}\n`, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const canonical = [method, `/${env.ALIBABA_OSS_BUCKET}/${ossEncode(objectKey)}`, canonicalQuery, `host:${host}\n`, "host", "UNSIGNED-PAYLOAD"].join("\n");
   const signingDate = await ossHmac(`aliyun_v4${env.ALIBABA_CLOUD_ACCESS_KEY_SECRET}`, day);
   const signingRegion = await ossHmac(signingDate, env.ALIBABA_OSS_REGION);
   const signingService = await ossHmac(signingRegion, "oss");
