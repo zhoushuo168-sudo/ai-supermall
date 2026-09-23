@@ -50,19 +50,21 @@ const ossDate = now => {
 const ossEndpoint = env => String(env.ALIBABA_OSS_ENDPOINT || "").replace(/^https?:\/\//i, "").replace(/\/$/, "");
 const ossObjectKeyPattern = /^[a-z]+\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|jpeg|png|webp)$/i;
 const ossObjectKeyFor = (userId, projectId, type, kind = "original") => `${kind}/${userId}/${projectId}/${crypto.randomUUID()}.${mediaExtension(type)}`;
-async function ossPresignedUrl(env, method, objectKey, expires = 600) {
+async function ossPresignedUrl(env, method, objectKey, expires = 600, contentType = "") {
   if (!ossConfigured(env)) throw new Error("OSS storage is not configured.");
   const host = `${env.ALIBABA_OSS_BUCKET}.${ossEndpoint(env)}`, { stamp, day } = ossDate(new Date());
   const scope = `${day}/${env.ALIBABA_OSS_REGION}/oss/aliyun_v4_request`;
+  const additionalHeaders = contentType ? "content-type;host" : "host";
+  const canonicalHeaders = contentType ? `content-type:${contentType}\nhost:${host}\n` : `host:${host}\n`;
   const query = new URLSearchParams({
-    "x-oss-additional-headers": "host",
+    "x-oss-additional-headers": additionalHeaders,
     "x-oss-credential": `${env.ALIBABA_CLOUD_ACCESS_KEY_ID}/${scope}`,
     "x-oss-date": stamp,
     "x-oss-expires": String(Math.max(1, Math.min(604800, expires))),
     "x-oss-signature-version": "OSS4-HMAC-SHA256"
   });
   const canonicalQuery = Array.from(query.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
-  const canonical = [method, `/${env.ALIBABA_OSS_BUCKET}/${ossEncode(objectKey)}`, canonicalQuery, `host:${host}\n`, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const canonical = [method, `/${env.ALIBABA_OSS_BUCKET}/${ossEncode(objectKey)}`, canonicalQuery, canonicalHeaders, additionalHeaders, "UNSIGNED-PAYLOAD"].join("\n");
   const signingDate = await ossHmac(`aliyun_v4${env.ALIBABA_CLOUD_ACCESS_KEY_SECRET}`, day);
   const signingRegion = await ossHmac(signingDate, env.ALIBABA_OSS_REGION);
   const signingService = await ossHmac(signingRegion, "oss");
@@ -255,8 +257,8 @@ async function ossMediaRoute(request, env, token, user, url) {
   try {
     return json({
       provider: "oss", path,
-      uploadUrl: await ossPresignedUrl(env, "PUT", path, 600),
-      headers: {},
+      uploadUrl: await ossPresignedUrl(env, "PUT", path, 600, cleanType),
+      headers: { "Content-Type": cleanType },
       media: { provider: "oss", path, name: String(name || `image.${mediaExtension(cleanType)}`).slice(0, 180), type: cleanType, kind: kind === "generated" ? "generated" : "reference" }
     });
   } catch (error) {
