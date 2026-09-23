@@ -153,6 +153,16 @@ async function projectMediaRoute(request, env, token, user, url) {
     return json({ url: signedStorageUrl(base, signed) });
   }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if ((request.headers.get("content-type") || "").includes("multipart/form-data")) {
+    const form = await request.formData(), id = String(form.get("projectId") || ""), file = form.get("file"), kind = String(form.get("kind") || "") === "generated" ? "generated" : "reference";
+    if (!projectIdPattern.test(id) || !(file instanceof File) || !mediaTypes.has(file.type) || file.size > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
+    const own = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}`, { headers: supabaseHeaders(env, token) }), projects = await own.json().catch(() => []);
+    if (!own.ok || !projects[0]) return json({ error: "Project not found." }, 404);
+    const path = mediaPathFor(user.id, id, file.type), upload = await fetch(`${base}/storage/v1/object/project-media/${path}`, { method: "POST", headers: { ...supabaseHeaders(env, token), "Content-Type": file.type, "x-upsert": "false" }, body: await file.arrayBuffer() });
+    const body = await upload.json().catch(() => ({}));
+    if (!upload.ok) return json({ error: supabaseError(body, upload.status, "media saving") }, upload.status);
+    return json({ media: [{ clientId: String(form.get("clientId") || ""), path, name: String(file.name || `image.${mediaExtension(file.type)}`).slice(0, 180), type: file.type, kind }] });
+  }
   const { projectId, media = [] } = await request.json();
   const id = String(projectId || "");
   if (!projectIdPattern.test(id)) return json({ error: "Invalid project identifier." }, 400);
