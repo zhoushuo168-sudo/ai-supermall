@@ -170,7 +170,7 @@ const safeProjectConversation = items => {
     question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images),
     generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), mode: item.generation.mode === "image_editing" ? "image_editing" : "text_to_image", inputImageCount: Math.max(0, Math.min(10, Number(item.generation.inputImageCount) || 0)), status: "completed" } : undefined
   }));
-  return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), uploads: safeProjectMedia(state.uploads) }, ...messages] : messages;
+  return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads) }, ...messages] : messages;
 };
 const bytesFromDataUrl = value => {
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=\s]+)$/i.exec(String(value || ""));
@@ -350,12 +350,15 @@ async function accountRoute(request, env, url) {
       return json(body, response.status);
     }
     if (request.method === "PATCH") {
-      const { id, locale = "zh", conversation = [] } = await request.json();
+      const { id, title, locale = "zh", conversation } = await request.json();
       const projectId = String(id || "").trim();
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
-      const safeConversation = safeProjectConversation(conversation);
+      const safeConversation = Array.isArray(conversation) ? safeProjectConversation(conversation) : undefined;
       const query = new URLSearchParams({ id: `eq.${projectId}`, select: "id,title,locale,conversation,updated_at" });
-      const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { method: "PATCH", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ locale: locale === "en" ? "en" : "zh", conversation: safeConversation, updated_at: new Date().toISOString() }) });
+      const update = { locale: locale === "en" ? "en" : "zh", updated_at: new Date().toISOString() };
+      if (safeConversation) update.conversation = safeConversation;
+      if (typeof title === "string" && title.trim()) update.title = title.trim().slice(0, 120);
+      const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { method: "PATCH", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify(update) });
       const body = await response.json();
       if (!response.ok) return json({ error: supabaseError(body, response.status, "project updating"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
       if (!body[0]) return json({ error: "Project not found." }, 404);
