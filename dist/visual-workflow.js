@@ -57,6 +57,28 @@
   })).filter(layer => layer.text) : [];
   const newTextLayer = () => ({ id: id(), text: '', size: 34, bold: true, color: '#ffffff', align: 'center', position: 'bottom' });
 
+  function applyVisualCopy() {
+    const english = language() === 'en';
+    document.title = english ? 'AI SuperMall — Visuals & posters' : 'AI SuperMall — 视觉与海报';
+    get('workspaceTitle').textContent = english ? 'Visuals & posters' : '视觉与海报';
+    get('workspaceDescription').textContent = english ? 'Upload an image or begin with an idea. Create and refine visual work in one place.' : '上传图片，或从一个想法开始。在同一个工作台中创作并继续修改。';
+    get('uploadLabel').textContent = english ? 'Upload image' : '上传图片';
+    get('dropText').textContent = english ? 'Drop JPG, PNG, or WEBP images here' : '拖放 JPG、PNG 或 WEBP 图片到这里';
+    get('formatText').textContent = english ? 'Up to 20 MB. Signed-in projects store images privately.' : '最大 20 MB。登录后保存到项目的图片会私密保存。';
+    get('visualTaskPanel').querySelector('h2').textContent = english ? 'Tell AI what you want to accomplish' : '告诉 AI 你想完成什么';
+    get('visualTaskPanel').querySelector('p').textContent = english ? 'Your task stays in this visual workspace.' : '你的任务会保留在这个视觉工作台中。';
+    get('workspaceSubmit').textContent = english ? 'Prepare visual plan' : '准备视觉方案';
+    get('taskInput').placeholder = english ? 'What image or poster would you like to create?' : '你想创作什么图片或海报？';
+    get('workspaceResults').querySelector('h2').textContent = 'AI SuperMall';
+    get('workspaceResults').querySelector('p').textContent = english ? 'Continue refining your work below.' : '在下方继续修改你的作品。';
+    get('homeLink').textContent = english ? 'Home' : '首页';
+    get('projectsLink').textContent = english ? 'My Projects' : '我的项目';
+    get('languageToggle').textContent = english ? '中文' : 'EN';
+    get('workspaceNote').textContent = state.projectId
+      ? (english ? 'Images are securely saved in your private project.' : '图片已安全保存到你的私有项目中。')
+      : (english ? 'Images are not saved yet; they will save securely after sign-in.' : '图片尚未保存；登录后会安全保存到你的项目中。');
+  }
+
   function release(asset) { if (asset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(asset.previewUrl); }
   function statusLabel() {
     let badge = get('visualProjectStatus');
@@ -579,6 +601,10 @@
     state.projectId = project.id;
     document.body.classList.add('visual-editing');
     state.title = project.title || '';
+    if (project.locale === 'en' || project.locale === 'zh') {
+      localStorage.setItem('ai-supermall-language', project.locale);
+      document.documentElement.lang = project.locale === 'en' ? 'en' : 'zh-CN';
+    }
     state.status = workspace.status || 'editing';
     state.textLayers = cleanLayers(workspace.textLayers);
     nameInput.value = state.title;
@@ -596,10 +622,19 @@
     event.stopImmediatePropagation();
     addFiles(event.target.files);
   }, true);
+  ['dragenter', 'dragover'].forEach(type => get('dropZone').addEventListener(type, event => { event.preventDefault(); get('dropZone').classList.add('dragging'); }));
+  ['dragleave', 'drop'].forEach(type => get('dropZone').addEventListener(type, event => { event.preventDefault(); get('dropZone').classList.remove('dragging'); }));
+  get('dropZone').addEventListener('drop', event => addFiles(event.dataTransfer?.files));
   form.addEventListener('submit', event => { event.preventDefault(); event.stopImmediatePropagation(); generate().catch(error => setStatus(error.message)); }, true);
   get('saveProject').addEventListener('click', event => { event.preventDefault(); event.stopImmediatePropagation(); saveProject(true).catch(error => setStatus(error.message)); }, true);
   input.addEventListener('input', event => { event.stopImmediatePropagation(); persistDraft(); scheduleSave(); }, true);
   nameInput.addEventListener('input', () => { persistDraft(); scheduleSave(); }, true);
+  get('languageToggle').addEventListener('click', () => {
+    const next = language() === 'en' ? 'zh' : 'en';
+    localStorage.setItem('ai-supermall-language', next);
+    document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
+    applyVisualCopy(); renderAssets(); renderResults(); statusLabel();
+  });
   document.addEventListener('click', event => {
     const link = event.target.closest('a[href*="account.html"]');
     if (!link) return;
@@ -628,6 +663,7 @@
       const loaded = await loadProject();
       if (!loaded) await restoreDraft();
     } catch (error) { setStatus(error.message); }
+    applyVisualCopy();
     renderAssets();
     renderResults();
     statusLabel();

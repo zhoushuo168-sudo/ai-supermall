@@ -21,13 +21,12 @@
       <section class="workspace-panel" id="visualUploadPanel"><h2 id="uploadLabel"></h2><p id="formatText"></p><div class="drop-zone" id="dropZone"><div><strong id="dropText"></strong><small>JPG · PNG · WEBP</small><span class="upload-control"><label class="upload-button" id="uploadButton" for="fileInput">Choose file</label><input class="file-input" id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple></span></div></div><img class="preview" id="filePreview" alt="Selected image preview"><p class="file-state" id="workspaceStatus" aria-live="polite"></p></section>
       <section class="workspace-panel" id="visualTaskPanel"><h2>AI SuperMall</h2><p>Tell us the outcome you want. Your task stays in one conversation.</p><form class="workspace-form" id="workspaceForm"><label id="projectNameLabel" for="projectName">Project name</label><input id="projectName" class="workspace-project-name" maxlength="120" autocomplete="off"><label id="taskInputLabel" for="taskInput">Your task</label><textarea id="taskInput" required></textarea><div class="workspace-actions"><button id="workspaceSubmit" type="submit"></button><button class="secondary" id="saveProject" type="button">Save to Project</button></div><p class="workspace-status" id="workspaceGenerationStatus" aria-live="polite"></p></form></section>
       <section class="workspace-results" id="workspaceResults" hidden><p class="kicker">CONVERSATION</p><h2>AI SuperMall</h2><p>Continue refining your task below.</p><div class="workspace-history" id="workspaceHistory"></div></section>
-      <p class="workspace-note">Selected files remain only in this browser session until a secure media tool is connected.</p>
+      <p class="workspace-note" id="workspaceNote">Selected files remain only in this browser session until a secure media tool is connected.</p>
     </section>
   </main>
   <nav class="mobile-app-nav" aria-label="Mobile navigation"><a href="index.html" data-mobile-destination="home">Home</a><a href="index.html#discover" data-mobile-destination="tools">AI Tools</a><a href="account.html?view=chats" data-mobile-destination="history">History</a><a href="account.html?view=projects" data-mobile-destination="projects">Projects</a><a href="account.html?view=account">Account</a></nav>
   <script src="visual-draft.js?v=1346131"></script>
-  <script src="workspace.js"></script>
-  <script src="visual-workflow.js?v=text-overlay-1"></script>
+  <script src="visual-workflow.js?v=text-overlay-2"></script>
   <script src="mobile-navigation.js"></script>
 </body>
 </html>
