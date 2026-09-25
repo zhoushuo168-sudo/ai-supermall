@@ -11,7 +11,7 @@
   const fileInput = get('fileInput');
   const maxBytes = 20 * 1024 * 1024;
   const draftFlag = 'ai-supermall-visual-draft-pending';
-  const state = { assets: [], messages: [], projectId: '', title: '', status: 'editing', saving: null, generating: false, timer: 0 };
+  const state = { assets: [], messages: [], textLayers: [], projectId: '', title: '', status: 'editing', saving: null, generating: false, timer: 0 };
   const tr = () => document.documentElement.lang === 'en' ? {
     unnamed: 'Untitled project', projectName: 'Project name', task: 'Your task', save: 'Save to Project',
     saved: 'Saved to your project.', saving: 'Saving your project…', generating: 'AI is generating your image…',
@@ -21,7 +21,7 @@
     completeConfirm: 'Save the latest artwork as the completed version of this project?', completedMessage: 'This project is marked completed. You can still reopen it and continue editing later.',
     download: 'Download image', login: 'Sign in to save this work', required: 'Describe what you would like to create.',
     imageError: 'The image could not load.', tooLarge: 'Please choose an image under 20 MB.', unsupported: 'Choose a JPG, PNG, or WEBP image.',
-    titleSaved: 'Project name updated.', retry: 'Try again'
+    titleSaved: 'Project name updated.', retry: 'Try again', addText: 'Add text', text: 'Text', textPlaceholder: 'Type exact text', fontSize: 'Size', weight: 'Bold', normal: 'Regular', bold: 'Bold', color: 'Color', align: 'Align', left: 'Left', center: 'Center', right: 'Right', position: 'Position', top: 'Top', middle: 'Middle', bottom: 'Bottom', removeText: 'Remove text', textLayers: 'Exact text', textHint: 'Text is placed by AI SuperMall and stays exactly as you enter it.', textAdded: 'Text layer added.'
   } : {
     unnamed: '未命名项目', projectName: '项目名称', task: '你的任务', save: '保存到项目',
     saved: '已保存到项目。', saving: '正在保存项目…', generating: 'AI 正在生成图片…',
@@ -31,7 +31,7 @@
     completeConfirm: '将最新作品保存为此项目的完成版本吗？', completedMessage: '项目已标记为完成。以后仍可重新打开并继续编辑。',
     download: '下载图片', login: '登录后即可保存这份作品', required: '请描述你想创作或修改的内容。',
     imageError: '图片无法加载。', tooLarge: '请选择小于 20 MB 的图片。', unsupported: '请选择 JPG、PNG 或 WEBP 图片。',
-    titleSaved: '项目名称已更新。', retry: '重新尝试'
+    titleSaved: '项目名称已更新。', retry: '重新尝试', addText: '添加文字', text: '文字', textPlaceholder: '输入准确文字', fontSize: '字号', weight: '字重', normal: '普通', bold: '粗体', color: '颜色', align: '对齐', left: '左对齐', center: '居中', right: '右对齐', position: '位置', top: '顶部', middle: '中间', bottom: '底部', removeText: '删除文字', textLayers: '精确文字', textHint: '文字由 AI SuperMall 程序排版，会按你的输入原样保留。', textAdded: '已添加文字层。'
   };
   const language = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
   const api = async (path, options = {}) => {
@@ -48,6 +48,14 @@
   const assetKey = file => [file.name, file.size, file.lastModified].join(':');
   const projectUrl = () => state.projectId ? `create-visual.html?project=${encodeURIComponent(state.projectId)}` : 'create-visual.html?restoreDraft=1';
   const safeMedia = item => item && item.path ? { provider: item.provider || 'supabase', path: item.path, name: item.name || 'image', type: item.type || 'image/png', kind: item.kind || 'reference' } : null;
+  const cleanLayers = layers => Array.isArray(layers) ? layers.slice(0, 12).map(layer => ({
+    id: String(layer?.id || id()).slice(0, 80), text: String(layer?.text || '').slice(0, 240),
+    size: Math.max(14, Math.min(120, Number(layer?.size) || 34)), bold: Boolean(layer?.bold),
+    color: /^#[0-9a-f]{6}$/i.test(String(layer?.color || '')) ? String(layer.color) : '#ffffff',
+    align: ['left', 'center', 'right'].includes(layer?.align) ? layer.align : 'center',
+    position: ['top', 'middle', 'bottom'].includes(layer?.position) ? layer.position : 'bottom'
+  })).filter(layer => layer.text) : [];
+  const newTextLayer = () => ({ id: id(), text: '', size: 34, bold: true, color: '#ffffff', align: 'center', position: 'bottom' });
 
   function release(asset) { if (asset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(asset.previewUrl); }
   function statusLabel() {
@@ -136,7 +144,7 @@
     const hasContent = Boolean(input.value.trim() || nameInput.value.trim() || state.assets.length || state.messages.length);
     if (!hasContent) return;
     const assets = state.assets.map(asset => ({ id: asset.id, fingerprint: asset.fingerprint, file: asset.file || null, name: asset.name, type: asset.type, size: asset.size, path: asset.path || '', provider: asset.provider || '', url: asset.url || '' }));
-    await storage.save({ version: 1, language: language(), title: nameInput.value, task: input.value, assets, messages: state.messages, projectId: state.projectId, status: state.status, savedAt: Date.now() });
+    await storage.save({ version: 2, language: language(), title: nameInput.value, task: input.value, assets, messages: state.messages, textLayers: state.textLayers, projectId: state.projectId, status: state.status, savedAt: Date.now() });
     localStorage.setItem(draftFlag, '1');
   }
   async function clearDraft() {
@@ -150,6 +158,7 @@
     state.assets.forEach(release);
     state.assets = (draft.assets || []).map(asset => ({ ...asset, file: asset.file || null, previewUrl: asset.file ? URL.createObjectURL(asset.file) : asset.url || '' }));
     state.messages = Array.isArray(draft.messages) ? draft.messages : [];
+    state.textLayers = cleanLayers(draft.textLayers);
     state.title = draft.title || '';
     state.status = draft.status || 'editing';
     nameInput.value = draft.title || '';
@@ -237,7 +246,8 @@
       task: input.value.trim() || state.messages.at(-1)?.question || '',
       status: state.status,
       uploads: stateMedia(),
-      finalImage: safeMedia(latest)
+      finalImage: safeMedia(latest),
+      textLayers: cleanLayers(state.textLayers)
     }, ...state.messages];
   }
   async function saveProject(manual = false) {
@@ -267,6 +277,170 @@
     state.timer = setTimeout(() => saveProject(false).catch(error => setStatus(error.message)), 900);
   }
 
+  function layerPoint(layer) {
+    return {
+      x: layer.align === 'left' ? '9%' : layer.align === 'right' ? '91%' : '50%',
+      y: layer.position === 'top' ? '10%' : layer.position === 'middle' ? '50%' : '90%'
+    };
+  }
+  function fillTextOverlay(overlay) {
+    overlay.replaceChildren();
+    state.textLayers.forEach(layer => {
+      const item = document.createElement('span');
+      const point = layerPoint(layer);
+      item.className = 'generated-text-layer';
+      item.textContent = layer.text;
+      item.style.left = point.x;
+      item.style.top = point.y;
+      item.style.textAlign = layer.align;
+      item.style.fontSize = `${Math.max(13, Math.round(layer.size * 0.55))}px`;
+      item.style.fontWeight = layer.bold ? '700' : '400';
+      item.style.color = layer.color;
+      item.style.transform = `translate(${layer.align === 'left' ? '0' : layer.align === 'right' ? '-100%' : '-50%'}, -50%)`;
+      overlay.append(item);
+    });
+  }
+  function refreshTextPreviews() {
+    document.querySelectorAll('.generated-artwork-overlay').forEach(fillTextOverlay);
+  }
+  function onLayerChange(layer, change) {
+    Object.assign(layer, change);
+    refreshTextPreviews();
+    persistDraft();
+    scheduleSave();
+  }
+  function option(value, label, selected) {
+    const item = document.createElement('option');
+    item.value = value;
+    item.textContent = label;
+    item.selected = value === selected;
+    return item;
+  }
+  function textEditor() {
+    const editor = document.createElement('section');
+    editor.className = 'visual-text-editor';
+    const heading = document.createElement('div');
+    const title = document.createElement('strong');
+    const hint = document.createElement('p');
+    const add = document.createElement('button');
+    title.textContent = tr().textLayers;
+    hint.textContent = tr().textHint;
+    add.type = 'button';
+    add.textContent = tr().addText;
+    add.addEventListener('click', () => {
+      state.textLayers.push(newTextLayer());
+      renderResults();
+      persistDraft();
+      scheduleSave();
+      get('workspaceHistory').querySelector('.visual-text-value:last-of-type')?.focus();
+    });
+    heading.append(title, add);
+    editor.append(heading, hint);
+    const rows = document.createElement('div');
+    rows.className = 'visual-text-rows';
+    state.textLayers.forEach(layer => {
+      const row = document.createElement('article');
+      row.className = 'visual-text-row';
+      const value = document.createElement('input');
+      value.className = 'visual-text-value';
+      value.maxLength = 240;
+      value.value = layer.text;
+      value.placeholder = tr().textPlaceholder;
+      value.setAttribute('aria-label', tr().text);
+      value.addEventListener('input', () => onLayerChange(layer, { text: value.value }));
+      const controls = document.createElement('div');
+      controls.className = 'visual-text-controls';
+      const size = document.createElement('input');
+      size.type = 'range'; size.min = '14'; size.max = '120'; size.value = String(layer.size); size.setAttribute('aria-label', tr().fontSize);
+      size.addEventListener('input', () => onLayerChange(layer, { size: Number(size.value) }));
+      const weight = document.createElement('button');
+      weight.type = 'button'; weight.className = layer.bold ? 'is-active' : ''; weight.textContent = layer.bold ? tr().bold : tr().normal;
+      weight.setAttribute('aria-label', tr().weight);
+      weight.addEventListener('click', () => { onLayerChange(layer, { bold: !layer.bold }); weight.classList.toggle('is-active', layer.bold); weight.textContent = layer.bold ? tr().bold : tr().normal; });
+      const color = document.createElement('input');
+      color.type = 'color'; color.value = layer.color; color.setAttribute('aria-label', tr().color);
+      color.addEventListener('input', () => onLayerChange(layer, { color: color.value }));
+      const align = document.createElement('select');
+      align.setAttribute('aria-label', tr().align);
+      [['left', tr().left], ['center', tr().center], ['right', tr().right]].forEach(([key, label]) => align.append(option(key, label, layer.align)));
+      align.addEventListener('change', () => onLayerChange(layer, { align: align.value }));
+      const position = document.createElement('select');
+      position.setAttribute('aria-label', tr().position);
+      [['top', tr().top], ['middle', tr().middle], ['bottom', tr().bottom]].forEach(([key, label]) => position.append(option(key, label, layer.position)));
+      position.addEventListener('change', () => onLayerChange(layer, { position: position.value }));
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.className = 'visual-text-remove'; remove.textContent = '×'; remove.setAttribute('aria-label', tr().removeText);
+      remove.addEventListener('click', () => { state.textLayers = state.textLayers.filter(item => item.id !== layer.id); renderResults(); persistDraft(); scheduleSave(); });
+      controls.append(size, weight, color, align, position, remove);
+      row.append(value, controls);
+      rows.append(row);
+    });
+    editor.append(rows);
+    return editor;
+  }
+  function artworkFrame(url, alt, preview) {
+    const frame = document.createElement('div');
+    frame.className = 'generated-artwork-frame';
+    frame.append(preview);
+    const overlay = document.createElement('div');
+    overlay.className = 'generated-artwork-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    fillTextOverlay(overlay);
+    frame.append(overlay);
+    return frame;
+  }
+  function wrapCanvasText(ctx, text, maxWidth) {
+    const output = [];
+    String(text).split('\n').forEach(paragraph => {
+      let line = '';
+      Array.from(paragraph || ' ').forEach(character => {
+        const candidate = line + character;
+        if (line && ctx.measureText(candidate).width > maxWidth) { output.push(line); line = character; }
+        else line = candidate;
+      });
+      output.push(line || ' ');
+    });
+    return output;
+  }
+  async function compositeImage(url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(tr().imageError);
+    const sourceUrl = URL.createObjectURL(await response.blob());
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const element = new Image();
+        element.onload = () => resolve(element);
+        element.onerror = () => reject(new Error(tr().imageError));
+        element.src = sourceUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth || image.width;
+      canvas.height = image.naturalHeight || image.height;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      state.textLayers.forEach(layer => {
+        const scale = canvas.width / 1024;
+        const size = Math.max(14, Math.round(layer.size * scale));
+        const padding = canvas.width * 0.09;
+        const point = layerPoint(layer);
+        const x = layer.align === 'left' ? padding : layer.align === 'right' ? canvas.width - padding : canvas.width / 2;
+        context.font = `${layer.bold ? '700' : '400'} ${size}px system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif`;
+        context.fillStyle = layer.color;
+        context.textAlign = layer.align;
+        context.textBaseline = 'middle';
+        context.shadowColor = 'rgba(0,0,0,.48)'; context.shadowBlur = Math.max(2, size * .12); context.shadowOffsetY = Math.max(1, size * .04);
+        const lines = wrapCanvasText(context, layer.text, canvas.width - padding * 2);
+        const lineHeight = Math.round(size * 1.22);
+        const centerY = layer.position === 'top' ? canvas.height * .10 : layer.position === 'middle' ? canvas.height * .50 : canvas.height * .90;
+        const startY = centerY - ((lines.length - 1) * lineHeight) / 2;
+        lines.forEach((line, index) => context.fillText(line, x, startY + index * lineHeight));
+      });
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error(tr().imageError);
+      return blob;
+    } finally { URL.revokeObjectURL(sourceUrl); }
+  }
+
   function renderResults() {
     const results = get('workspaceResults');
     const history = get('workspaceHistory');
@@ -285,8 +459,8 @@
         preview.className = 'generated-image';
         preview.src = url;
         preview.alt = language() === 'en' ? 'Generated artwork' : '生成作品';
-        preview.addEventListener('click', () => showPreview(url, preview.alt));
-        card.append(preview);
+        preview.addEventListener('click', () => showPreview(url, preview.alt).catch(error => setStatus(error.message)));
+        card.append(artworkFrame(url, preview.alt, preview));
       });
       if (index === state.messages.length - 1 && message.images?.length) {
         const actions = document.createElement('div');
@@ -303,31 +477,43 @@
         complete.addEventListener('click', () => completeProject().catch(error => setStatus(error.message)));
         actions.append(refine, download, complete);
         card.append(actions);
+        card.append(textEditor());
       }
       history.append(card);
     });
     results.hidden = !state.messages.length;
   }
-  function showPreview(url, alt) {
+  async function showPreview(url, alt) {
     let modal = get('generatedImageModal');
     if (!modal) {
       modal = document.createElement('div');
       modal.id = 'generatedImageModal';
       modal.className = 'generated-image-modal';
       modal.innerHTML = '<div class="generated-image-modal-backdrop"></div><section class="generated-image-modal-panel" role="dialog" aria-modal="true"><button type="button" class="generated-image-modal-close">×</button><img></section>';
-      modal.querySelector('.generated-image-modal-backdrop').onclick = () => { modal.hidden = true; };
-      modal.querySelector('button').onclick = () => { modal.hidden = true; };
+      const close = () => { if (modal.dataset.objectUrl) URL.revokeObjectURL(modal.dataset.objectUrl); delete modal.dataset.objectUrl; modal.hidden = true; };
+      modal.querySelector('.generated-image-modal-backdrop').onclick = close;
+      modal.querySelector('button').onclick = close;
       document.body.append(modal);
     }
-    modal.querySelector('img').src = url;
-    modal.querySelector('img').alt = alt;
+    const image = modal.querySelector('img');
+    if (modal.dataset.objectUrl) URL.revokeObjectURL(modal.dataset.objectUrl);
+    if (state.textLayers.length) {
+      const composite = await compositeImage(url);
+      modal.dataset.objectUrl = URL.createObjectURL(composite);
+      image.src = modal.dataset.objectUrl;
+    } else image.src = url;
+    image.alt = alt;
     modal.hidden = false;
   }
   async function downloadImage(url) {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(tr().imageError);
-    const blob = await response.blob();
-    const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
+    let blob;
+    if (state.textLayers.length) blob = await compositeImage(url);
+    else {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(tr().imageError);
+      blob = await response.blob();
+    }
+    const extension = state.textLayers.length ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
     const file = new File([blob], `ai-supermall-${Date.now()}.${extension}`, { type: blob.type || 'image/png' });
     if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
       try { await navigator.share({ files: [file], title: 'AI SuperMall' }); return; }
@@ -394,6 +580,7 @@
     document.body.classList.add('visual-editing');
     state.title = project.title || '';
     state.status = workspace.status || 'editing';
+    state.textLayers = cleanLayers(workspace.textLayers);
     nameInput.value = state.title;
     input.value = workspace.task || '';
     state.assets = await Promise.all((workspace.uploads || []).map(async media => ({ id: id + '-' + media.path, fingerprint: 'stored:' + media.path, file: null, name: media.name || 'image', type: media.type || 'image/png', size: 0, path: media.path, provider: media.provider || 'supabase', previewUrl: await signedUrl(media) })));

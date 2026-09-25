@@ -28,3 +28,71 @@
   color: #777770;
   font-size: 12px;
 }
+.generated-artwork-frame {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin: 14px 0 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+}
+.generated-artwork-frame .generated-image { margin: 0; max-width: none; }
+.generated-artwork-overlay { position: absolute; inset: 0; pointer-events: none; }
+.generated-text-layer {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  max-width: 82%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.22;
+  letter-spacing: .01em;
+  text-shadow: 0 2px 6px rgba(0,0,0,.58);
+}
+.visual-text-editor {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid #ffffff2b;
+  border-radius: 12px;
+  background: #ffffff0d;
+}
+.visual-text-editor > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.visual-text-editor > div:first-child strong { color: #fff; font-size: 14px; }
+.visual-text-editor > div:first-child button,
+.visual-text-controls button,
+.visual-text-controls select {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #fff;
+  color: #1c1c1b;
+  font: 700 12px inherit;
+  cursor: pointer;
+}
+.visual-text-editor > p { margin: 7px 0 12px; color: #d5d5cf; font-size: 12px; line-height: 1.55; }
+.visual-text-rows { display: grid; gap: 9px; }
+.visual-text-row { padding: 10px; border-radius: 10px; background: #00000022; }
+.visual-text-value {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #ffffff55;
+  border-radius: 9px;
+  padding: 9px 10px;
+  background: #fff;
+  color: #181817;
+  font: 16px/1.35 inherit;
+}
+.visual-text-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 8px; }
+.visual-text-controls input[type="range"] { flex: 1 1 92px; min-width: 78px; accent-color: #ffb3a9; }
+.visual-text-controls input[type="color"] { width: 36px; height: 34px; border: 0; padding: 2px; border-radius: 8px; background: #fff; cursor: pointer; }
+.visual-text-controls .is-active { background: #ffb3a9; }
+.visual-text-controls .visual-text-remove { margin-left: auto; min-width: 34px; padding: 4px 9px; color: #a01f18; font-size: 20px; line-height: 1; }
+@media (max-width: 760px) {
+  .generated-artwork-frame { max-width: 100%; }
+  .visual-text-editor { padding: 11px; }
+  .visual-text-controls select { max-width: calc(50% - 4px); }
+  .visual-text-controls .visual-text-remove { margin-left: 0; }
+}

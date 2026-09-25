@@ -163,6 +163,13 @@ async function supabaseUser(env, token) {
 const projectIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const mediaTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const safeProjectMedia = media => Array.isArray(media) ? media.slice(0, 10).map(normalizeMediaDescriptor).filter(validMediaDescriptor) : [];
+const safeTextLayers = layers => Array.isArray(layers) ? layers.slice(0, 12).map(layer => ({
+  id: String(layer?.id || crypto.randomUUID()).slice(0, 80), text: String(layer?.text || "").slice(0, 240),
+  size: Math.max(14, Math.min(120, Number(layer?.size) || 34)), bold: Boolean(layer?.bold),
+  color: /^#[0-9a-f]{6}$/i.test(String(layer?.color || "")) ? String(layer.color) : "#ffffff",
+  align: ["left", "center", "right"].includes(layer?.align) ? layer.align : "center",
+  position: ["top", "middle", "bottom"].includes(layer?.position) ? layer.position : "bottom"
+})).filter(layer => layer.text) : [];
 const safeProjectConversation = items => {
   if (!Array.isArray(items)) return [];
   const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
@@ -170,7 +177,7 @@ const safeProjectConversation = items => {
     question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images),
     generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), mode: item.generation.mode === "image_editing" ? "image_editing" : "text_to_image", inputImageCount: Math.max(0, Math.min(10, Number(item.generation.inputImageCount) || 0)), status: "completed" } : undefined
   }));
-  return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads) }, ...messages] : messages;
+  return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads), textLayers: safeTextLayers(state.textLayers) }, ...messages] : messages;
 };
 const bytesFromDataUrl = value => {
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=\s]+)$/i.exec(String(value || ""));
