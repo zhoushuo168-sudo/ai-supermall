@@ -9,5 +9,8 @@
     const css=document.createElement('link');css.rel='stylesheet';css.href='project-workspace.css?v=project-flow-2';document.head.append(css);
     const script=document.createElement('script');script.src='project-workspace.js?v=project-flow-2';document.body.append(script);
   }
+  if(/account(?:\.html)?$/.test(location.pathname)){
+    const script=document.createElement('script');script.src='account-session-state.js?v=project-flow-2';document.body.append(script);
+  }
   setNavigation();window.addEventListener('hashchange',setNavigation);window.addEventListener('popstate',setNavigation);new MutationObserver(setNavigation).observe(document.documentElement,{attributes:true,attributeFilter:['lang']});
 })();
