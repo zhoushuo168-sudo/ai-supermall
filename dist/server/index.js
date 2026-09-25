@@ -173,11 +173,19 @@ const safeTextLayers = layers => Array.isArray(layers) ? layers.slice(0, 12).map
 const safeProjectConversation = items => {
   if (!Array.isArray(items)) return [];
   const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
-  const messages = items.filter(item => item?.type !== "workspace_state").slice(-30).map(item => ({
+  const suppliedMeta = items.find(item => item?.type === "project_meta");
+  const inferredWorkspace = state ? "visual" : ["visual", "video", "writing", "presentation", "knowledge"].includes(suppliedMeta?.workspace) ? suppliedMeta.workspace : "knowledge";
+  const meta = {
+    type: "project_meta",
+    workspace: inferredWorkspace,
+    intent: ["visual", "video", "writing", "presentation", "knowledge"].includes(suppliedMeta?.intent) ? suppliedMeta.intent : inferredWorkspace,
+    task: String(suppliedMeta?.task || state?.task || "").slice(0, 2000)
+  };
+  const messages = items.filter(item => item?.type !== "workspace_state" && item?.type !== "project_meta").slice(-30).map(item => ({
     question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images),
     generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), mode: item.generation.mode === "image_editing" ? "image_editing" : "text_to_image", inputImageCount: Math.max(0, Math.min(10, Number(item.generation.inputImageCount) || 0)), status: "completed" } : undefined
   }));
-  return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads), textLayers: safeTextLayers(state.textLayers) }, ...messages] : messages;
+  return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads), textLayers: safeTextLayers(state.textLayers) }, meta, ...messages] : [meta, ...messages];
 };
 const bytesFromDataUrl = value => {
   const match = /^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=\s]+)$/i.exec(String(value || ""));

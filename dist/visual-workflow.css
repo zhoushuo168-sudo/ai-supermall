@@ -22,6 +22,7 @@
   font-size: 11px;
   font-weight: 800;
 }
+.visual-project-choices{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 2px}.visual-project-choices small{width:100%;color:#6d6d66;line-height:1.45}.visual-project-choices button{border:1px solid #d8d8d1;border-radius:999px;background:#fff;color:#242420;padding:8px 12px;font:700 13px inherit;cursor:pointer}.visual-project-choices button:last-child{background:#20201e;color:#fff;border-color:#20201e}
 .visual-project-list-status {
   display: block;
   margin-top: 3px;

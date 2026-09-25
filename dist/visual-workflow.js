@@ -11,7 +11,7 @@
   const fileInput = get('fileInput');
   const maxBytes = 20 * 1024 * 1024;
   const draftFlag = 'ai-supermall-visual-draft-pending';
-  const state = { assets: [], messages: [], textLayers: [], projectId: '', title: '', status: 'editing', saving: null, generating: false, timer: 0 };
+  const state = { assets: [], messages: [], textLayers: [], projectId: '', title: '', status: 'editing', saving: null, generating: false, timer: 0, loadToken: 0, restoredFromChat: false };
   const tr = () => document.documentElement.lang === 'en' ? {
     unnamed: 'Untitled project', projectName: 'Project name', task: 'Your task', save: 'Save to Project',
     saved: 'Saved to your project.', saving: 'Saving your project…', generating: 'AI is generating your image…',
@@ -21,7 +21,7 @@
     completeConfirm: 'Save the latest artwork as the completed version of this project?', completedMessage: 'This project is marked completed. You can still reopen it and continue editing later.',
     download: 'Download image', login: 'Sign in to save this work', required: 'Describe what you would like to create.',
     imageError: 'The image could not load.', tooLarge: 'Please choose an image under 20 MB.', unsupported: 'Choose a JPG, PNG, or WEBP image.', titlePlaceholder: 'Enter a project name', titleRequired: 'Enter a project name before saving this image-only task.',
-    titleSaved: 'Project name updated.', retry: 'Try again', addText: 'Add text', text: 'Text', textPlaceholder: 'Type exact text', fontSize: 'Size', weight: 'Bold', normal: 'Regular', bold: 'Bold', color: 'Color', align: 'Align', left: 'Left', center: 'Center', right: 'Right', position: 'Position', top: 'Top', middle: 'Middle', bottom: 'Bottom', removeText: 'Remove text', textLayers: 'Exact text', textHint: 'Text is placed by AI SuperMall and stays exactly as you enter it.', textAdded: 'Text layer added.'
+    titleSaved: 'Project name updated.', retry: 'Try again', addText: 'Add text', text: 'Text', textPlaceholder: 'Type exact text', fontSize: 'Size', weight: 'Bold', normal: 'Regular', bold: 'Bold', color: 'Color', align: 'Align', left: 'Left', center: 'Center', right: 'Right', position: 'Position', top: 'Top', middle: 'Middle', bottom: 'Bottom', removeText: 'Remove text', textLayers: 'Exact text', textHint: 'Text is placed by AI SuperMall and stays exactly as you enter it.', textAdded: 'Text layer added.', continueChat: 'Continue discussing', continueMaking: 'Continue making', projectRestored: 'Your project is ready. Choose how you would like to continue.'
   } : {
     unnamed: '未命名项目', projectName: '项目名称', task: '你的任务', save: '保存到项目',
     saved: '已保存到项目。', saving: '正在保存项目…', generating: 'AI 正在生成图片…',
@@ -31,7 +31,7 @@
     completeConfirm: '将最新作品保存为此项目的完成版本吗？', completedMessage: '项目已标记为完成。以后仍可重新打开并继续编辑。',
     download: '下载图片', login: '登录后即可保存这份作品', required: '请描述你想创作或修改的内容。',
     imageError: '图片无法加载。', tooLarge: '请选择小于 20 MB 的图片。', unsupported: '请选择 JPG、PNG 或 WEBP 图片。', titlePlaceholder: '请输入项目名称', titleRequired: '仅上传图片时，请先输入项目名称再保存。',
-    titleSaved: '项目名称已更新。', retry: '重新尝试', addText: '添加文字', text: '文字', textPlaceholder: '输入准确文字', fontSize: '字号', weight: '字重', normal: '普通', bold: '粗体', color: '颜色', align: '对齐', left: '左对齐', center: '居中', right: '右对齐', position: '位置', top: '顶部', middle: '中间', bottom: '底部', removeText: '删除文字', textLayers: '精确文字', textHint: '文字由 AI SuperMall 程序排版，会按你的输入原样保留。', textAdded: '已添加文字层。'
+    titleSaved: '项目名称已更新。', retry: '重新尝试', addText: '添加文字', text: '文字', textPlaceholder: '输入准确文字', fontSize: '字号', weight: '字重', normal: '普通', bold: '粗体', color: '颜色', align: '对齐', left: '左对齐', center: '居中', right: '右对齐', position: '位置', top: '顶部', middle: '中间', bottom: '底部', removeText: '删除文字', textLayers: '精确文字', textHint: '文字由 AI SuperMall 程序排版，会按你的输入原样保留。', textAdded: '已添加文字层。', continueChat: '继续聊这个项目', continueMaking: '继续制作', projectRestored: '项目已恢复。请选择下一步。'
   };
   const language = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
   const api = async (path, options = {}) => {
@@ -107,6 +107,27 @@
       get('visualTaskPanel').querySelector('p').after(badge);
     }
     badge.textContent = state.projectId ? (state.status === 'completed' ? tr().completed : tr().editing) : '';
+  }
+  function projectChoices() {
+    if (!state.projectId) return;
+    let panel = get('visualProjectChoices');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'visualProjectChoices';
+      panel.className = 'visual-project-choices';
+      get('visualTaskPanel').querySelector('p').after(panel);
+    }
+    panel.replaceChildren();
+    const note = document.createElement('small');
+    const chat = document.createElement('button');
+    const make = document.createElement('button');
+    note.textContent = tr().projectRestored;
+    chat.type = make.type = 'button';
+    chat.textContent = tr().continueChat;
+    make.textContent = tr().continueMaking;
+    chat.addEventListener('click', () => { input.placeholder = language() === 'en' ? 'Add a detail or ask a question about this project…' : '补充需求或继续讨论这个项目…'; input.focus(); });
+    make.addEventListener('click', () => { input.placeholder = language() === 'en' ? 'Describe what you would like to create or change…' : '描述接下来想制作或修改什么…'; get('visualUploadPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }); input.focus({ preventScroll: true }); });
+    panel.append(note, chat, make);
   }
   function assetsPanel() {
     let panel = get('visualWorkflowAssets');
@@ -210,6 +231,7 @@
     renderAssets();
     renderResults();
     statusLabel();
+    projectChoices();
     setStatus(tr().restored);
     history.replaceState(null, '', 'create-visual.html');
     if (await signedIn()) scheduleSave();
@@ -290,7 +312,7 @@
       uploads: stateMedia(),
       finalImage: safeMedia(latest),
       textLayers: cleanLayers(state.textLayers)
-    }, ...state.messages];
+    }, { type: 'project_meta', workspace: 'visual', intent: 'visual', task: input.value.trim() || state.messages.at(-1)?.question || '' }, ...state.messages];
   }
   async function saveProject(manual = false) {
     if (state.saving) return state.saving;
@@ -617,12 +639,19 @@
     statusLabel();
     setStatus(tr().completedMessage);
   }
+  async function hydrateMedia(media, token) {
+    const url = await signedUrl(media);
+    if (token !== state.loadToken || !url) return '';
+    return url;
+  }
   async function loadProject() {
     const id = new URLSearchParams(location.search).get('project');
     if (!id) return false;
+    const token = ++state.loadToken;
     const project = await api('/api/member/projects?id=' + encodeURIComponent(id));
     const workspace = (project.conversation || []).find(item => item?.type === 'workspace_state' && item.workspace === 'visual');
-    if (!workspace) return false;
+    const meta = (project.conversation || []).find(item => item?.type === 'project_meta');
+    if (!workspace && meta?.workspace !== 'visual') return false;
     state.projectId = project.id;
     document.body.classList.add('visual-editing');
     state.title = project.title || '';
@@ -630,18 +659,35 @@
       localStorage.setItem('ai-supermall-language', project.locale);
       document.documentElement.lang = project.locale === 'en' ? 'en' : 'zh-CN';
     }
-    state.status = workspace.status || 'editing';
-    state.textLayers = cleanLayers(workspace.textLayers);
+    state.status = workspace?.status || 'editing';
+    state.textLayers = cleanLayers(workspace?.textLayers);
     nameInput.value = state.title;
-    input.value = workspace.task || '';
-    state.assets = await Promise.all((workspace.uploads || []).map(async media => ({ id: id + '-' + media.path, fingerprint: 'stored:' + media.path, file: null, name: media.name || 'image', type: media.type || 'image/png', size: 0, path: media.path, provider: media.provider || 'supabase', previewUrl: await signedUrl(media) })));
-    state.messages = await Promise.all((project.conversation || []).filter(item => item?.type !== 'workspace_state').map(async message => ({ ...message, images: await Promise.all((message.images || []).map(async image => typeof image === 'string' ? image : { ...image, url: await signedUrl(image) })) })));
-    if (!state.messages.some(message => (message.images || []).length) && workspace.finalImage?.path) {
-      state.messages.push({ question: workspace.task || '', answer: '', images: [{ ...workspace.finalImage, url: await signedUrl(workspace.finalImage) }] });
+    input.value = workspace?.task || meta?.task || '';
+    state.restoredFromChat = !workspace;
+    state.assets = (workspace?.uploads || []).map(media => ({ id: id + '-' + media.path, fingerprint: 'stored:' + media.path, file: null, name: media.name || 'image', type: media.type || 'image/png', size: 0, path: media.path, provider: media.provider || 'supabase', previewUrl: '' }));
+    state.messages = (project.conversation || []).filter(item => item?.type !== 'workspace_state' && item?.type !== 'project_meta').map(message => ({ ...message, images: (message.images || []).map(image => typeof image === 'string' ? image : { ...image, url: image.url || '' }) }));
+    if (!state.messages.some(message => (message.images || []).length) && workspace?.finalImage?.path) {
+      state.messages.push({ question: workspace.task || '', answer: '', images: [{ ...workspace.finalImage, url: '' }] });
     }
     renderAssets();
     renderResults();
     statusLabel();
+    projectChoices();
+    // Render the saved project immediately, then replace each private-media placeholder
+    // only after its own signed URL is ready. This avoids an all-or-nothing media race.
+    await Promise.all(state.assets.map(async asset => {
+      asset.previewUrl = await hydrateMedia(asset, token);
+      if (token === state.loadToken) renderAssets();
+    }));
+    await Promise.all(state.messages.flatMap(message => (message.images || []).map(async image => {
+      if (typeof image === 'string' || !image?.path) return;
+      image.url = await hydrateMedia(image, token);
+      if (token === state.loadToken) renderResults();
+    })));
+    if (workspace?.finalImage?.path && !state.messages.some(message => (message.images || []).some(image => image?.path === workspace.finalImage.path))) {
+      const latest = state.messages.at(-1)?.images?.at(-1);
+      if (latest) latest.url = await hydrateMedia(workspace.finalImage, token);
+    }
     return true;
   }
 
