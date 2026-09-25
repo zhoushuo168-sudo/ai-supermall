@@ -254,6 +254,26 @@ async function ossMediaRoute(request, env, token, user, url) {
     catch (error) { console.error("OSS media signing failed", { message: error instanceof Error ? error.message : "unknown" }); return json({ error: "Private media preview is temporarily unavailable." }, 502); }
   }
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+  if ((request.headers.get("content-type") || "").includes("multipart/form-data")) {
+    const form = await request.formData(), id = String(form.get("projectId") || ""), file = form.get("file"), kind = String(form.get("kind") || "") === "generated" ? "generated" : "reference";
+    if (!projectIdPattern.test(id) || !(file instanceof File) || !mediaTypes.has(file.type) || file.size > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
+    const owned = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
+    const projects = await owned.json().catch(() => []);
+    if (!owned.ok || !projects[0]) return json({ error: "Project not found." }, 404);
+    const path = ossObjectKeyFor(user.id, id, file.type, kind === "generated" ? "generated" : "original");
+    try {
+      const upload = await fetch(await ossPresignedUrl(env, "PUT", path, 600, file.type), { method: "PUT", headers: { "Content-Type": file.type }, body: await file.arrayBuffer() });
+      if (!upload.ok) {
+        const detail = (await upload.text().catch(() => "")).slice(0, 240);
+        console.error("OSS server upload failed", { status: upload.status, detail });
+        return json({ error: `Private image upload failed (OSS HTTP ${upload.status}).` }, 502);
+      }
+      return json({ media: { provider: "oss", path, name: String(file.name || `image.${mediaExtension(file.type)}`).slice(0, 180), type: file.type, kind } });
+    } catch (error) {
+      console.error("OSS server upload failed", { message: error instanceof Error ? error.message : "unknown" });
+      return json({ error: "Private image upload failed while sending the file to private storage." }, 502);
+    }
+  }
   const { projectId, name, type, size, kind = "reference" } = await request.json().catch(() => ({}));
   const id = String(projectId || ""), cleanType = String(type || "").toLowerCase(), bytes = Number(size || 0);
   if (!projectIdPattern.test(id) || !mediaTypes.has(cleanType) || !Number.isFinite(bytes) || bytes <= 0 || bytes > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);

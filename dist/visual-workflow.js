@@ -20,7 +20,7 @@
     refine: 'Continue editing', complete: 'Complete', completed: 'Completed', editing: 'Editing',
     completeConfirm: 'Save the latest artwork as the completed version of this project?', completedMessage: 'This project is marked completed. You can still reopen it and continue editing later.',
     download: 'Download image', login: 'Sign in to save this work', required: 'Describe what you would like to create.',
-    imageError: 'The image could not load.', tooLarge: 'Please choose an image under 20 MB.', unsupported: 'Choose a JPG, PNG, or WEBP image.',
+    imageError: 'The image could not load.', tooLarge: 'Please choose an image under 20 MB.', unsupported: 'Choose a JPG, PNG, or WEBP image.', titlePlaceholder: 'Enter a project name', titleRequired: 'Enter a project name before saving this image-only task.',
     titleSaved: 'Project name updated.', retry: 'Try again', addText: 'Add text', text: 'Text', textPlaceholder: 'Type exact text', fontSize: 'Size', weight: 'Bold', normal: 'Regular', bold: 'Bold', color: 'Color', align: 'Align', left: 'Left', center: 'Center', right: 'Right', position: 'Position', top: 'Top', middle: 'Middle', bottom: 'Bottom', removeText: 'Remove text', textLayers: 'Exact text', textHint: 'Text is placed by AI SuperMall and stays exactly as you enter it.', textAdded: 'Text layer added.'
   } : {
     unnamed: '未命名项目', projectName: '项目名称', task: '你的任务', save: '保存到项目',
@@ -30,7 +30,7 @@
     refine: '继续修改', complete: '完成', completed: '已完成', editing: '编辑中',
     completeConfirm: '将最新作品保存为此项目的完成版本吗？', completedMessage: '项目已标记为完成。以后仍可重新打开并继续编辑。',
     download: '下载图片', login: '登录后即可保存这份作品', required: '请描述你想创作或修改的内容。',
-    imageError: '图片无法加载。', tooLarge: '请选择小于 20 MB 的图片。', unsupported: '请选择 JPG、PNG 或 WEBP 图片。',
+    imageError: '图片无法加载。', tooLarge: '请选择小于 20 MB 的图片。', unsupported: '请选择 JPG、PNG 或 WEBP 图片。', titlePlaceholder: '请输入项目名称', titleRequired: '仅上传图片时，请先输入项目名称再保存。',
     titleSaved: '项目名称已更新。', retry: '重新尝试', addText: '添加文字', text: '文字', textPlaceholder: '输入准确文字', fontSize: '字号', weight: '字重', normal: '普通', bold: '粗体', color: '颜色', align: '对齐', left: '左对齐', center: '居中', right: '右对齐', position: '位置', top: '顶部', middle: '中间', bottom: '底部', removeText: '删除文字', textLayers: '精确文字', textHint: '文字由 AI SuperMall 程序排版，会按你的输入原样保留。', textAdded: '已添加文字层。'
   };
   const language = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
@@ -69,6 +69,7 @@
     get('visualTaskPanel').querySelector('h2').textContent = english ? 'Tell AI what you want to accomplish' : '告诉 AI 你想完成什么';
     get('visualTaskPanel').querySelector('p').textContent = english ? 'Your task stays in this visual workspace.' : '你的任务会保留在这个视觉工作台中。';
     get('workspaceSubmit').textContent = english ? 'Prepare visual plan' : '准备视觉方案';
+    nameInput.placeholder = tr().titlePlaceholder;
     get('taskInput').placeholder = english ? 'What image or poster would you like to create?' : '你想创作什么图片或海报？';
     get('workspaceResults').querySelector('h2').textContent = 'AI SuperMall';
     get('workspaceResults').querySelector('p').textContent = english ? 'Continue refining your work below.' : '在下方继续修改你的作品。';
@@ -86,7 +87,6 @@
       const handoff = JSON.parse(sessionStorage.getItem('ai-supermall-workspace-handoff') || '{}');
       if (handoff.workspace !== 'visual' || typeof handoff.task !== 'string' || !handoff.task.trim()) return false;
       input.value = handoff.task.trim().slice(0, 2000);
-      if (!nameInput.value.trim()) nameInput.value = input.value.trim().slice(0, 120);
       if (handoff.language === 'en' || handoff.language === 'zh') {
         localStorage.setItem('ai-supermall-language', handoff.language);
         document.documentElement.lang = handoff.language === 'en' ? 'en' : 'zh-CN';
@@ -246,8 +246,8 @@
   }
   async function ensureProject() {
     if (state.projectId) return state.projectId;
-    const title = nameInput.value.trim() || input.value.trim().slice(0, 120) || String(state.messages.at(-1)?.question || '').trim().slice(0, 120) || tr().unnamed;
-    nameInput.value = title;
+    const title = nameInput.value.trim() || input.value.trim().slice(0, 120) || String(state.messages.at(-1)?.question || '').trim().slice(0, 120);
+    if (!title) { nameInput.focus(); throw new Error(tr().titleRequired); }
     const created = await api('/api/member/projects', json({ title, locale: language(), conversation: [] }));
     const project = Array.isArray(created) ? created[0] : created;
     if (!project?.id) throw new Error('Project could not be created.');
@@ -260,10 +260,12 @@
   async function uploadOriginals() {
     for (const asset of state.assets) {
       if (!asset.file || asset.path) continue;
-      const authorization = await api('/api/member/oss-media', json({ projectId: state.projectId, name: asset.name, type: asset.type, size: asset.size, kind: 'reference' }));
-      const upload = await fetch(authorization.uploadUrl, { method: 'PUT', headers: authorization.headers || {}, body: asset.file });
-      if (!upload.ok) throw new Error('Private image upload failed.');
-      Object.assign(asset, authorization.media, { previewUrl: asset.previewUrl });
+      const formData = new FormData();
+      formData.append('projectId', state.projectId);
+      formData.append('kind', 'reference');
+      formData.append('file', asset.file, asset.name);
+      const saved = await api('/api/member/oss-media', { method: 'POST', body: formData });
+      Object.assign(asset, saved.media, { previewUrl: asset.previewUrl });
     }
   }
   async function persistGenerated() {
@@ -294,6 +296,11 @@
     if (state.saving) return state.saving;
     const hasContent = Boolean(input.value.trim() || nameInput.value.trim() || state.assets.length || state.messages.length);
     if (!hasContent) return;
+    const canNameProject = Boolean(nameInput.value.trim() || input.value.trim() || state.messages.length);
+    if (!state.projectId && !canNameProject) {
+      if (manual) { setStatus(tr().titleRequired); nameInput.focus(); }
+      return;
+    }
     if (!(await signedIn())) {
       await persistDraft();
       if (manual) await redirectToLogin();
@@ -305,7 +312,7 @@
       await ensureProject();
       await uploadOriginals();
       await persistGenerated();
-      await api('/api/member/projects', patch({ id: state.projectId, title: nameInput.value.trim() || tr().unnamed, locale: language(), conversation: projectConversation() }));
+      await api('/api/member/projects', patch({ id: state.projectId, title: nameInput.value.trim() || state.title || String(state.messages.at(-1)?.question || '').trim().slice(0, 120), locale: language(), conversation: projectConversation() }));
       await clearDraft();
       setStatus(tr().saved);
     })();
