@@ -21,8 +21,8 @@ const safePassword = password => String(password || "");
 const routeModel = text => /\b(code|coding|program|debug|algorithm|math|mathematics|equation|proof|technical|architecture)\b|代码|编程|调试|算法|数学|方程|证明|技术分析|架构/i.test(text) ? "deepseek" : "qwen";
 const taskInstruction = (taskType, isEnglish) => {
   const instructions = isEnglish
-    ? { image_creation: "The final image generator is not connected. Help prepare a detailed image prompt, style direction, and composition; do not claim an image file was created.", presentation: "The final presentation generator is not connected. Help prepare a slide outline and slide-by-slide content; do not claim a PPT file was created.", video: "The final video or audio generator is not connected. Help prepare a script, storyboard, and production prompt; do not claim a media file was created.", writing: "Help produce the requested writing, plan, summary, translation, or outline directly.", productivity: "Help turn the user's goal into practical next steps and useful work." }
-    : { image_creation: "最终图像生成工具尚未接入。请帮助准备详细图像提示词、风格方向和构图；不要声称已生成图片文件。", presentation: "最终演示文稿生成工具尚未接入。请帮助准备 PPT 大纲和逐页内容；不要声称已生成 PPT 文件。", video: "最终视频或音频生成工具尚未接入。请帮助准备脚本、分镜和制作提示词；不要声称已生成媒体文件。", writing: "请直接帮助完成用户需要的写作、计划、总结、翻译或大纲。", productivity: "请把用户目标转化为可执行的下一步和实用工作成果。" };
+    ? { image_creation: "AI SuperMall has its own Visuals & posters workspace and image generation. Keep the user inside AI SuperMall; do not say image generation is unavailable.", presentation: "AI SuperMall has its own Presentations workspace. Keep the user inside AI SuperMall.", video: "AI SuperMall has its own Video & shorts workspace. Keep the user inside AI SuperMall.", writing: "Help produce the requested writing, plan, summary, translation, or outline directly inside AI SuperMall.", productivity: "Help turn the user's goal into practical next steps and useful work inside AI SuperMall." }
+    : { image_creation: "AI SuperMall 已提供自己的视觉与海报工作台和图像生成能力。必须在本站内继续完成，不得说图像生成不可用。", presentation: "AI SuperMall 已提供自己的演示与汇报工作台。必须在本站内继续完成。", video: "AI SuperMall 已提供自己的视频与短片工作台。必须在本站内继续完成。", writing: "请在 AI SuperMall 内直接完成用户需要的写作、计划、总结、翻译或大纲。", productivity: "请在 AI SuperMall 内把用户目标转化为可执行的下一步和实用工作成果。" };
   return instructions[taskType] || "";
 };
 const imageHost = value => {
@@ -210,7 +210,7 @@ async function projectMediaRoute(request, env, token, user, url) {
   if ((request.headers.get("content-type") || "").includes("multipart/form-data")) {
     const form = await request.formData(), id = String(form.get("projectId") || ""), file = form.get("file"), kind = String(form.get("kind") || "") === "generated" ? "generated" : "reference";
     if (!projectIdPattern.test(id) || !(file instanceof File) || !mediaTypes.has(file.type) || file.size > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
-    const own = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}`, { headers: supabaseHeaders(env, token) }), projects = await own.json().catch(() => []);
+    const own = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) }), projects = await own.json().catch(() => []);
     if (!own.ok || !projects[0]) return json({ error: "Project not found." }, 404);
     const path = mediaPathFor(user.id, id, file.type), upload = await fetch(`${base}/storage/v1/object/project-media/${path}`, { method: "POST", headers: { ...supabaseHeaders(env, token), "Content-Type": file.type, "x-upsert": "false" }, body: await file.arrayBuffer() });
     const body = await upload.json().catch(() => ({}));
@@ -220,7 +220,7 @@ async function projectMediaRoute(request, env, token, user, url) {
   const { projectId, media = [] } = await request.json();
   const id = String(projectId || "");
   if (!projectIdPattern.test(id)) return json({ error: "Invalid project identifier." }, 400);
-  const own = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}`, { headers: supabaseHeaders(env, token) });
+  const own = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
   const projects = await own.json().catch(() => []);
   if (!own.ok || !projects[0]) return json({ error: "Project not found." }, 404);
   const saved = [];
@@ -257,7 +257,7 @@ async function ossMediaRoute(request, env, token, user, url) {
   const { projectId, name, type, size, kind = "reference" } = await request.json().catch(() => ({}));
   const id = String(projectId || ""), cleanType = String(type || "").toLowerCase(), bytes = Number(size || 0);
   if (!projectIdPattern.test(id) || !mediaTypes.has(cleanType) || !Number.isFinite(bytes) || bytes <= 0 || bytes > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
-  const owned = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}`, { headers: supabaseHeaders(env, token) });
+  const owned = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
   const projects = await owned.json().catch(() => []);
   if (!owned.ok || !projects[0]) return json({ error: "Project not found." }, 404);
   const path = ossObjectKeyFor(user.id, id, cleanType, kind === "generated" ? "generated" : "original");
@@ -340,6 +340,7 @@ async function accountRoute(request, env, url) {
       const projectId = url.searchParams.get("id");
       if (projectId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
       const query = new URLSearchParams({ select: "id,title,locale,conversation,updated_at", order: "updated_at.desc" });
+      query.set("owner_id", `eq.${user.id}`);
       if (projectId) query.set("id", `eq.${projectId}`);
       const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { headers: supabaseHeaders(env, token) });
       const body = await response.json();
@@ -361,7 +362,7 @@ async function accountRoute(request, env, url) {
       const projectId = String(id || "").trim();
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
       const safeConversation = Array.isArray(conversation) ? safeProjectConversation(conversation) : undefined;
-      const query = new URLSearchParams({ id: `eq.${projectId}`, select: "id,title,locale,conversation,updated_at" });
+      const query = new URLSearchParams({ id: `eq.${projectId}`, owner_id: `eq.${user.id}`, select: "id,title,locale,conversation,updated_at" });
       const update = { locale: locale === "en" ? "en" : "zh", updated_at: new Date().toISOString() };
       if (safeConversation) update.conversation = safeConversation;
       if (typeof title === "string" && title.trim()) update.title = title.trim().slice(0, 120);
@@ -439,8 +440,8 @@ export default {
         const taskHelp = taskInstruction(String(taskType), isEnglish);
         const earlier = Array.isArray(context) ? context.slice(-4).map(item => `Q: ${String(item.question || "").slice(0, 300)}\nA: ${String(item.answer || "").slice(0, 500)}`).join("\n") : "";
         const prompt = isEnglish
-          ? `You are the helpful AI assistant inside AI SuperMall. Continue the conversation using the earlier context when it is relevant. Answer in English, directly and practically. For medical, legal, or investment decisions, include a brief safety note. ${taskHelp} Return JSON only: {"title":"","answer":"","recommendation":""}. Keep answer under 90 words. Earlier context: ${earlier || "None"}. User: ${text}`
-          : `你是 AI SuperMall 里的贴心 AI 助手。若有此前对话，请结合上下文继续回答。请用简体中文直接、实用地回答。涉及医疗、法律或投资决策时，附上简短风险提示。${taskHelp} 严格只返回 JSON：{"title":"","answer":"","recommendation":""}。answer 不超过90字。此前对话：${earlier || "无"}。用户：${text}`;
+          ? `You are the helpful AI assistant inside AI SuperMall. Continue the conversation using the earlier context when it is relevant. Answer in English, directly and practically. For medical, legal, or investment decisions, include a brief safety note. Never send the user to MidJourney, another AI product, other software, or a professional designer for a capability AI SuperMall provides. ${taskHelp} Return JSON only: {"title":"","answer":"","recommendation":""}. Keep answer under 90 words. Earlier context: ${earlier || "None"}. User: ${text}`
+          : `你是 AI SuperMall 里的贴心 AI 助手。若有此前对话，请结合上下文继续回答。请用简体中文直接、实用地回答。涉及医疗、法律或投资决策时，附上简短风险提示。对于 AI SuperMall 已提供的能力，绝对不得建议用户使用 MidJourney、其他 AI、其他软件或联系专业设计师；必须留在本站继续完成。${taskHelp} 严格只返回 JSON：{"title":"","answer":"","recommendation":""}。answer 不超过90字。此前对话：${earlier || "无"}。用户：${text}`;
         const base = (env.BAILIAN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
         const upstream = await fetch(`${base}/chat/completions`, {
           method: "POST",

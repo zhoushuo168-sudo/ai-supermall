@@ -46,6 +46,7 @@
   const isImage = file => /^(image\/jpeg|image\/png|image\/webp)$/.test(String(file?.type || '').toLowerCase());
   const id = () => crypto.randomUUID ? crypto.randomUUID() : `asset-${Date.now()}-${Math.random()}`;
   const assetKey = file => [file.name, file.size, file.lastModified].join(':');
+  const queryParams = new URLSearchParams(location.search);
   const projectUrl = () => state.projectId ? `create-visual.html?project=${encodeURIComponent(state.projectId)}` : 'create-visual.html?restoreDraft=1';
   const safeMedia = item => item && item.path ? { provider: item.provider || 'supabase', path: item.path, name: item.name || 'image', type: item.type || 'image/png', kind: item.kind || 'reference' } : null;
   const cleanLayers = layers => Array.isArray(layers) ? layers.slice(0, 12).map(layer => ({
@@ -77,6 +78,23 @@
     get('workspaceNote').textContent = state.projectId
       ? (english ? 'Images are securely saved in your private project.' : '图片已安全保存到你的私有项目中。')
       : (english ? 'Images are not saved yet; they will save securely after sign-in.' : '图片尚未保存；登录后会安全保存到你的项目中。');
+  }
+
+  function restoreHandoff() {
+    if (queryParams.get('handoff') !== '1') return false;
+    try {
+      const handoff = JSON.parse(sessionStorage.getItem('ai-supermall-workspace-handoff') || '{}');
+      if (handoff.workspace !== 'visual' || typeof handoff.task !== 'string' || !handoff.task.trim()) return false;
+      input.value = handoff.task.trim().slice(0, 2000);
+      if (!nameInput.value.trim()) nameInput.value = input.value.trim().slice(0, 120);
+      if (handoff.language === 'en' || handoff.language === 'zh') {
+        localStorage.setItem('ai-supermall-language', handoff.language);
+        document.documentElement.lang = handoff.language === 'en' ? 'en' : 'zh-CN';
+      }
+      sessionStorage.removeItem('ai-supermall-workspace-handoff');
+      history.replaceState(null, '', 'create-visual.html?new=1');
+      return true;
+    } catch { sessionStorage.removeItem('ai-supermall-workspace-handoff'); return false; }
   }
 
   function release(asset) { if (asset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(asset.previewUrl); }
@@ -174,7 +192,7 @@
     await window.AISuperMallVisualDraft?.clear().catch(() => {});
   }
   async function restoreDraft() {
-    if (new URLSearchParams(location.search).get('project') || !localStorage.getItem(draftFlag)) return false;
+    if (queryParams.get('restoreDraft') !== '1' || !localStorage.getItem(draftFlag)) return false;
     const draft = await window.AISuperMallVisualDraft?.load().catch(() => null);
     if (!draft) return false;
     state.assets.forEach(release);
@@ -228,7 +246,7 @@
   }
   async function ensureProject() {
     if (state.projectId) return state.projectId;
-    const title = nameInput.value.trim() || tr().unnamed;
+    const title = nameInput.value.trim() || input.value.trim().slice(0, 120) || String(state.messages.at(-1)?.question || '').trim().slice(0, 120) || tr().unnamed;
     nameInput.value = title;
     const created = await api('/api/member/projects', json({ title, locale: language(), conversation: [] }));
     const project = Array.isArray(created) ? created[0] : created;
@@ -611,6 +629,9 @@
     input.value = workspace.task || '';
     state.assets = await Promise.all((workspace.uploads || []).map(async media => ({ id: id + '-' + media.path, fingerprint: 'stored:' + media.path, file: null, name: media.name || 'image', type: media.type || 'image/png', size: 0, path: media.path, provider: media.provider || 'supabase', previewUrl: await signedUrl(media) })));
     state.messages = await Promise.all((project.conversation || []).filter(item => item?.type !== 'workspace_state').map(async message => ({ ...message, images: await Promise.all((message.images || []).map(async image => typeof image === 'string' ? image : { ...image, url: await signedUrl(image) })) })));
+    if (!state.messages.some(message => (message.images || []).length) && workspace.finalImage?.path) {
+      state.messages.push({ question: workspace.task || '', answer: '', images: [{ ...workspace.finalImage, url: await signedUrl(workspace.finalImage) }] });
+    }
     renderAssets();
     renderResults();
     statusLabel();
@@ -661,7 +682,7 @@
     get('saveProject').textContent = tr().save;
     try {
       const loaded = await loadProject();
-      if (!loaded) await restoreDraft();
+      if (!loaded && !restoreHandoff()) await restoreDraft();
     } catch (error) { setStatus(error.message); }
     applyVisualCopy();
     renderAssets();
