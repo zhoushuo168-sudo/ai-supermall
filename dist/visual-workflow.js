@@ -26,8 +26,6 @@
     if (!node) return;
     const dump = diag.lines.slice(-8).map(line => JSON.stringify(line)).join(' / ');
     node.dataset.diag = dump;
-    const base = String(node.textContent || '').split('\n[diag] ')[0];
-    if (dump) node.textContent = `${base}\n[diag] ${dump}`;
   };
   const diagNote = (phase, extra) => {
     const line = { t: Date.now() % 1e9, phase, restored: diag.restored, ...extra };
