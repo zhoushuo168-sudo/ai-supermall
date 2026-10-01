@@ -655,6 +655,8 @@
           if (!response.ok) throw new Error(tr().imageError);
           images = [await localImageData(new File([await response.blob()], 'previous-artwork.png', { type: response.headers.get('content-type') || 'image/png' }))];
         }
+        const added = state.assets.filter(asset => asset.file);
+        if ((projectMedia.length || images.length) && added.length) images = images.concat(await Promise.all(added.map(asset => localImageData(asset.file))));
       } else {
         const stored = stateMedia();
         projectMedia = stored;

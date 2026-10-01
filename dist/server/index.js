@@ -110,10 +110,18 @@ async function visualRoute(request, env) {
       else console.warn("Bailian image reference could not be signed", { status: signedResponse.status });
     }
   }
-  const inputImages = [...files.map(item => item.data), ...stored].slice(0, 10);
+  const inputImages = [...stored, ...files.map(item => item.data)].slice(0, 10);
   if (requireImage && !inputImages.length) return json({ error: isEnglish ? "Your reference image was not available. Please reselect it or reopen the project after it finishes loading." : "没有找到可用的原始图片。请重新选择图片，或等待项目恢复完成后重试。" }, 400);
-  const editInstruction = inputImages.length ? (isEnglish ? "This is an image-editing task. Use the first input image as the original. Preserve its scene, subject, composition, architecture, trees, objects, and identity. Make only the changes explicitly requested by the user. Do not invent an unrelated scene." : "这是图像编辑任务。必须以第 1 张输入图片为原图，保留原始场景、主体、构图、建筑、树木和物体；只执行用户明确要求的修改，不要生成无关的新场景。") : "";
-  const content = [...inputImages.map(image => ({ image })), { text: editInstruction ? `${text}\n\n${editInstruction}` : text }];
+  const today = new Date().toISOString().slice(0, 10);
+  const dateContext = isEnglish
+    ? `Today's date is ${today}. If the user did not specify a year, use this date and year for time references such as "this year", National Day, or anniversaries. If the user explicitly specified a year, use the year the user specified.`
+    : `今天的日期是 ${today}。如果用户没有指定年份，涉及“今年、国庆节、周年”等时间信息时，以当前日期和年份为准。如果用户明确指定了年份，以用户指定的年份为准。`;
+  const editInstruction = inputImages.length > 1
+    ? (isEnglish ? "This is an image-editing task. Image 1 is the original image to edit and must stay the canvas. Every image after image 1 is a new reference or source image supplied by the user. Add those later images into image 1 as the user requested. Do not use image 1 in place of those reference images, and do not treat a later image as a new canvas." : "这是图像编辑任务。第 1 张图是要修改的原图，必须作为底图。后续图片是用户新提供的参考或素材图，必须按用户要求加入第 1 张图。不要用第 1 张图代替这些参考图，也不要把后续图片当成新的底图。")
+    : inputImages.length
+      ? (isEnglish ? "This is an image-editing task. Use the first input image as the original. Preserve its scene, subject, composition, architecture, trees, objects, and identity. Make only the changes explicitly requested by the user. Do not invent an unrelated scene." : "这是图像编辑任务。必须以第 1 张输入图片为原图，保留原始场景、主体、构图、建筑、树木和物体；只执行用户明确要求的修改，不要生成无关的新场景。")
+      : "";
+  const content = [...inputImages.map(image => ({ image })), { text: [text, dateContext, editInstruction].filter(Boolean).join("\n\n") }];
   const model = env.BAILIAN_IMAGE_MODEL || "wan2.7-image", mode = inputImages.length ? "image_editing" : "text_to_image";
   console.info("Bailian image request", { model, mode, directImageCount: files.length, storedImageCount: stored.length, inputImageCount: inputImages.length });
   const response = await fetch(`https://${host}/api/v1/services/aigc/multimodal-generation/generation`, {
