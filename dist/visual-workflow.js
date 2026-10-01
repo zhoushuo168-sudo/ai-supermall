@@ -12,6 +12,29 @@
   const maxBytes = 20 * 1024 * 1024;
   const draftFlag = 'ai-supermall-visual-draft-pending';
   const state = { assets: [], messages: [], textLayers: [], projectId: '', title: '', status: 'editing', saving: null, generating: false, timer: 0, loadToken: 0, restoredFromChat: false };
+  const diag = { restored: false, lines: [] };
+  const fileMeta = (file, label) => ({
+    [label + 'Ctor']: file == null ? 'null' : (file.constructor && file.constructor.name) || typeof file,
+    [label + 'Blob']: file instanceof Blob,
+    [label + 'File']: file instanceof File,
+    [label + 'Size']: file && typeof file.size === 'number' ? file.size : null,
+    [label + 'Type']: String(file && file.type || '').slice(0, 40),
+    [label + 'NameLen']: String(file && file.name || '').length
+  });
+  const paintDiag = () => {
+    const node = get('workspaceStatus');
+    if (!node) return;
+    const dump = diag.lines.slice(-8).map(line => JSON.stringify(line)).join(' / ');
+    node.dataset.diag = dump;
+    const base = String(node.textContent || '').split('\n[diag] ')[0];
+    if (dump) node.textContent = `${base}\n[diag] ${dump}`;
+  };
+  const diagNote = (phase, extra) => {
+    const line = { t: Date.now() % 1e9, phase, restored: diag.restored, ...extra };
+    diag.lines = diag.lines.slice(-30).concat(line);
+    try { sessionStorage.setItem('ai-supermall-oss-diag', JSON.stringify(diag.lines)); } catch {}
+    paintDiag();
+  };
   const tr = () => document.documentElement.lang === 'en' ? {
     unnamed: 'Untitled project', projectName: 'Project name', task: 'Your task', save: 'Save to Project',
     saved: 'Saved to your project.', saving: 'Saving your project…', generating: 'AI is generating your image…',
@@ -37,12 +60,12 @@
   const api = async (path, options = {}) => {
     const response = await fetch(path, options);
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || 'Request failed');
+    if (!response.ok) throw new Error((body.error || 'Request failed') + (body.diag ? ` diag:${body.diag}` : ''));
     return body;
   };
   const json = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const patch = body => ({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const setStatus = message => { get('workspaceStatus').textContent = message || ''; get('workspaceGenerationStatus').textContent = message || ''; };
+  const setStatus = message => { get('workspaceStatus').textContent = message || ''; get('workspaceGenerationStatus').textContent = message || ''; paintDiag(); };
   const isImage = file => /^(image\/jpeg|image\/png|image\/webp)$/.test(String(file?.type || '').toLowerCase());
   const id = () => crypto.randomUUID ? crypto.randomUUID() : `asset-${Date.now()}-${Math.random()}`;
   const assetKey = file => [file.name, file.size, file.lastModified].join(':');
@@ -205,6 +228,7 @@
     const hasContent = Boolean(input.value.trim() || nameInput.value.trim() || state.assets.length || state.messages.length);
     if (!hasContent) return;
     const assets = state.assets.map(asset => ({ id: asset.id, fingerprint: asset.fingerprint, file: asset.file || null, name: asset.name, type: asset.type, size: asset.size, path: asset.path || '', provider: asset.provider || '', url: asset.url || '' }));
+    assets.forEach((asset, index) => diagNote('persistDraft', { id: String(asset.id || '').slice(0, 36), index, ...fileMeta(asset.file, 'w') }));
     await storage.save({ version: 2, language: language(), title: nameInput.value, task: input.value, assets, messages: state.messages, textLayers: state.textLayers, projectId: state.projectId, status: state.status, savedAt: Date.now() });
     localStorage.setItem(draftFlag, '1');
   }
@@ -216,6 +240,8 @@
     if (queryParams.get('restoreDraft') !== '1' || !localStorage.getItem(draftFlag)) return false;
     const draft = await window.AISuperMallVisualDraft?.load().catch(() => null);
     if (!draft) return false;
+    diag.restored = true;
+    (draft.assets || []).forEach((asset, index) => diagNote('idbLoad', { id: String(asset.id || '').slice(0, 36), index, ...fileMeta(asset.file, 'r') }));
     state.assets.forEach(release);
     state.assets = (draft.assets || []).map(asset => ({ ...asset, file: asset.file || null, previewUrl: asset.file ? URL.createObjectURL(asset.file) : asset.url || '' }));
     state.messages = Array.isArray(draft.messages) ? draft.messages : [];
@@ -280,14 +306,32 @@
     return state.projectId;
   }
   async function uploadOriginals() {
+    let index = 0;
     for (const asset of state.assets) {
-      if (!asset.file || asset.path) continue;
+      if (!asset.file || asset.path) { index += 1; continue; }
+      diagNote('preForm', { id: String(asset.id || '').slice(0, 36), index, ...fileMeta(asset.file, 'u') });
       const formData = new FormData();
       formData.append('projectId', state.projectId);
       formData.append('kind', 'reference');
       formData.append('file', asset.file, asset.name);
-      const saved = await api('/api/member/oss-media', { method: 'POST', body: formData });
-      Object.assign(asset, saved.media, { previewUrl: asset.previewUrl });
+      const part = formData.get('file');
+      diagNote('postForm', { id: String(asset.id || '').slice(0, 36), index, ...fileMeta(part, 'f') });
+      try {
+        const saved = await api('/api/member/oss-media', { method: 'POST', body: formData });
+        Object.assign(asset, saved.media, { previewUrl: asset.previewUrl });
+      } catch (error) {
+        diagNote('ossFail', { id: String(asset.id || '').slice(0, 36), index, err: String(error && error.message || '').slice(0, 160) });
+        throw error;
+      } finally {
+        const probe = asset.file;
+        if (probe instanceof Blob) {
+          Promise.resolve()
+            .then(() => probe.slice(0, probe.size).arrayBuffer())
+            .then(buf => diagNote('postFetchBytes', { id: String(asset.id || '').slice(0, 36), index, byteLength: buf.byteLength }))
+            .catch(err => diagNote('postFetchBytes', { id: String(asset.id || '').slice(0, 36), index, readErr: String(err && err.name || 'read') }));
+        }
+      }
+      index += 1;
     }
   }
   async function persistGenerated() {

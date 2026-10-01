@@ -263,23 +263,49 @@ async function ossMediaRoute(request, env, token, user, url) {
   }
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
   if ((request.headers.get("content-type") || "").includes("multipart/form-data")) {
-    const form = await request.formData(), id = String(form.get("projectId") || ""), file = form.get("file"), kind = String(form.get("kind") || "") === "generated" ? "generated" : "reference";
+    const head = {
+      hasBoundary: /boundary=/i.test(request.headers.get("content-type") || ""),
+      contentLength: request.headers.get("content-length"),
+      bodyUsed: request.bodyUsed
+    };
+    let form;
+    try {
+      form = await request.formData();
+      console.error("oss-media-diag", { step: "formData-ok", ...head });
+    } catch (error) {
+      console.error("oss-media-diag", { step: "formData-throw", ...head, errName: error instanceof Error ? error.name : "unknown" });
+      throw error;
+    }
+    const id = String(form.get("projectId") || ""), file = form.get("file"), kind = String(form.get("kind") || "") === "generated" ? "generated" : "reference";
+    console.error("oss-media-diag", {
+      step: "parsed",
+      isFile: file instanceof File,
+      isBlob: file instanceof Blob,
+      size: file instanceof Blob ? file.size : null,
+      type: file instanceof Blob ? String(file.type || "").slice(0, 40) : typeof file,
+      nameLen: file instanceof File ? String(file.name || "").length : 0,
+      projectIdOk: projectIdPattern.test(id)
+    });
     if (!projectIdPattern.test(id) || !(file instanceof File) || !mediaTypes.has(file.type) || file.size > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
     const owned = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
     const projects = await owned.json().catch(() => []);
     if (!owned.ok || !projects[0]) return json({ error: "Project not found." }, 404);
     const path = ossObjectKeyFor(user.id, id, file.type, kind === "generated" ? "generated" : "original");
     try {
-      const upload = await fetch(await ossPresignedUrl(env, "PUT", path, 600, file.type), { method: "PUT", headers: { "Content-Type": file.type }, body: await file.arrayBuffer() });
+      const bytes = await file.arrayBuffer();
+      console.error("oss-media-diag", { step: "arrayBuffer", byteLength: bytes.byteLength, declaredSize: file.size, reachedPut: true });
+      const upload = await fetch(await ossPresignedUrl(env, "PUT", path, 600, file.type), { method: "PUT", headers: { "Content-Type": file.type }, body: bytes });
       if (!upload.ok) {
         const detail = (await upload.text().catch(() => "")).slice(0, 240);
         console.error("OSS server upload failed", { status: upload.status, detail });
-        return json({ error: `Private image upload failed (OSS HTTP ${upload.status}).` }, 502);
+        console.error("oss-media-diag", { step: "oss-put", ossStatus: upload.status, diag: "277" });
+        return json({ error: `Private image upload failed (OSS HTTP ${upload.status}).`, diag: "277" }, 502);
       }
       return json({ media: { provider: "oss", path, name: String(file.name || `image.${mediaExtension(file.type)}`).slice(0, 180), type: file.type, kind } });
     } catch (error) {
       console.error("OSS server upload failed", { message: error instanceof Error ? error.message : "unknown" });
-      return json({ error: "Private image upload failed while sending the file to private storage." }, 502);
+      console.error("oss-media-diag", { step: "put-catch", errName: error instanceof Error ? error.name : "unknown", diag: "282" });
+      return json({ error: "Private image upload failed while sending the file to private storage.", diag: "282" }, 502);
     }
   }
   const { projectId, name, type, size, kind = "reference" } = await request.json().catch(() => ({}));
@@ -453,7 +479,10 @@ export default {
     }
     if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations" || url.pathname === "/api/member/project-media" || url.pathname === "/api/member/oss-media") {
       try { return await accountRoute(request, env, url); }
-      catch { return json({ error: "The account service is temporarily unavailable." }, 502); }
+      catch (error) {
+        console.error("oss-media-diag", { step: "accountRoute-catch", path: url.pathname, errName: error instanceof Error ? error.name : "unknown", diag: "456" });
+        return json({ error: "The account service is temporarily unavailable.", diag: "456" }, 502);
+      }
     }
     if (url.pathname === "/api/recommend") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
