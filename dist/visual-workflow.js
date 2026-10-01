@@ -638,6 +638,7 @@
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
+  const sentAssetIds = new Set();
   async function generate() {
     const prompt = input.value.trim();
     if (!prompt) { setStatus(tr().required); input.focus(); return; }
@@ -647,7 +648,7 @@
     setStatus(tr().generating);
     try {
       const previous = latestImage();
-      let images = [], projectMedia = [];
+      let images = [], projectMedia = [], includedAssets = [];
       if (previous) {
         if (typeof previous !== 'string' && previous.path) projectMedia = [safeMedia(previous)];
         else if (typeof previous === 'string') {
@@ -655,16 +656,23 @@
           if (!response.ok) throw new Error(tr().imageError);
           images = [await localImageData(new File([await response.blob()], 'previous-artwork.png', { type: response.headers.get('content-type') || 'image/png' }))];
         }
-        const added = state.assets.filter(asset => asset.file);
-        if ((projectMedia.length || images.length) && added.length) images = images.concat(await Promise.all(added.map(asset => localImageData(asset.file))));
+        const added = state.assets.filter(asset => asset.file && !sentAssetIds.has(asset.id));
+        if ((projectMedia.length || images.length) && added.length) {
+          images = images.concat(await Promise.all(added.map(asset => localImageData(asset.file))));
+          includedAssets = added;
+        }
       } else {
         const stored = stateMedia();
         projectMedia = stored;
-        if (!projectMedia.length) images = await Promise.all(state.assets.filter(asset => asset.file).map(asset => localImageData(asset.file)));
+        if (!projectMedia.length) {
+          includedAssets = state.assets.filter(asset => asset.file);
+          images = await Promise.all(includedAssets.map(asset => localImageData(asset.file)));
+        } else includedAssets = state.assets.filter(asset => asset.path);
       }
       const response = await api('/api/visual/generate', json({ prompt, language: language(), images, projectMedia, requireImage: Boolean(previous || state.assets.length) }));
       const resultImages = (response.images || []).filter(Boolean);
       if (!resultImages.length) throw new Error(language() === 'en' ? 'The image model returned no image.' : '图像模型没有返回图片。');
+      includedAssets.forEach(asset => sentAssetIds.add(asset.id));
       state.status = 'editing';
       state.messages.push({ question: prompt, answer: response.answer || '', images: resultImages, generation: response.generation || null });
       input.value = '';
