@@ -84,8 +84,51 @@ const normalizeMediaDescriptor = item => {
   };
 };
 const validMediaDescriptor = item => item.provider === "oss" ? ossObjectKeyPattern.test(item.path) : /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(item.path);
+const clockFact = (timeZone) => {
+  const now = new Date();
+  const utc = now.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const zone = /^[A-Za-z0-9_/+-]{1,80}$/.test(String(timeZone || "")) ? String(timeZone) : "";
+  if (!zone) return { when: utc, zone: "" };
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(now);
+    const pick = type => parts.find(part => part.type === type)?.value || "";
+    const year = pick("year"), month = pick("month"), day = pick("day"), hour = pick("hour"), minute = pick("minute"), second = pick("second");
+    if (!year || !month || !day || !hour || !minute || !second) return { when: utc, zone: "" };
+    return { when: `${year}-${month}-${day}T${hour}:${minute}:${second}`, zone };
+  } catch { return { when: utc, zone: "" }; }
+};
+async function clarifyVisualTask(env, text, imageCount, timeZone) {
+  try {
+    if (!env.BAILIAN_API_KEY) return "";
+    const { when, zone } = clockFact(timeZone);
+    const modelId = env.BAILIAN_MODEL || "qwen3.8-flash";
+    const base = (env.BAILIAN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+    const facts = `Current date/time: ${when}\nUser timezone: ${zone || "not provided"}\nImage count: ${imageCount}`;
+    const upstream = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      signal: AbortSignal.timeout(8000),
+      headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelId,
+        temperature: 0.2,
+        max_tokens: 400,
+        messages: [
+          { role: "system", content: "Rewrite the user's words into one clear image task. Use the supplied facts and your own knowledge. Return only the task text, in the same language as the user." },
+          { role: "user", content: `${facts}\n\nUser request:\n${text}` }
+        ]
+      })
+    });
+    if (!upstream.ok) return "";
+    const payload = await upstream.json().catch(() => ({}));
+    const clarified = String(payload?.choices?.[0]?.message?.content || "").trim().slice(0, 2000);
+    return clarified;
+  } catch (error) {
+    console.warn("Visual task clarify skipped", { message: error instanceof Error ? error.message : "unavailable" });
+    return "";
+  }
+}
 async function visualRoute(request, env) {
-  const { prompt = "", language = "zh", images = [], projectMedia = [], requireImage = false } = await request.json();
+  const { prompt = "", language = "zh", images = [], projectMedia = [], requireImage = false, timeZone = "" } = await request.json();
   const text = String(prompt).trim().slice(0, 2000), isEnglish = language === "en";
   if (!text) return json({ error: isEnglish ? "Please describe the image you want." : "请描述你想生成或修改的图片。" }, 400);
   const host = imageHost(env.BAILIAN_WORKSPACE_ID);
@@ -112,16 +155,14 @@ async function visualRoute(request, env) {
   }
   const inputImages = [...stored, ...files.map(item => item.data)].slice(0, 10);
   if (requireImage && !inputImages.length) return json({ error: isEnglish ? "Your reference image was not available. Please reselect it or reopen the project after it finishes loading." : "没有找到可用的原始图片。请重新选择图片，或等待项目恢复完成后重试。" }, 400);
-  const today = new Date().toISOString().slice(0, 10);
-  const dateContext = isEnglish
-    ? `Today's date is ${today}. If the user did not specify a year, use this date and year for time references such as "this year", National Day, or anniversaries. If the user explicitly specified a year, use the year the user specified.`
-    : `今天的日期是 ${today}。如果用户没有指定年份，涉及“今年、国庆节、周年”等时间信息时，以当前日期和年份为准。如果用户明确指定了年份，以用户指定的年份为准。`;
+  const clarified = await clarifyVisualTask(env, text, inputImages.length, timeZone);
+  const taskText = clarified || text;
   const editInstruction = inputImages.length > 1
     ? (isEnglish ? "This is an image-editing task. Image 1 is the original image to edit and must stay the canvas. Every image after image 1 is a new reference or source image supplied by the user. Add those later images into image 1 as the user requested. Do not use image 1 in place of those reference images, and do not treat a later image as a new canvas." : "这是图像编辑任务。第 1 张图是要修改的原图，必须作为底图。后续图片是用户新提供的参考或素材图，必须按用户要求加入第 1 张图。不要用第 1 张图代替这些参考图，也不要把后续图片当成新的底图。")
     : inputImages.length
       ? (isEnglish ? "This is an image-editing task. Use the first input image as the original. Preserve its scene, subject, composition, architecture, trees, objects, and identity. Make only the changes explicitly requested by the user. Do not invent an unrelated scene." : "这是图像编辑任务。必须以第 1 张输入图片为原图，保留原始场景、主体、构图、建筑、树木和物体；只执行用户明确要求的修改，不要生成无关的新场景。")
       : "";
-  const content = [...inputImages.map(image => ({ image })), { text: [text, dateContext, editInstruction].filter(Boolean).join("\n\n") }];
+  const content = [...inputImages.map(image => ({ image })), { text: [taskText, editInstruction].filter(Boolean).join("\n\n") }];
   const model = env.BAILIAN_IMAGE_MODEL || "wan2.7-image", mode = inputImages.length ? "image_editing" : "text_to_image";
   console.info("Bailian image request", { model, mode, directImageCount: files.length, storedImageCount: stored.length, inputImageCount: inputImages.length });
   const response = await fetch(`https://${host}/api/v1/services/aigc/multimodal-generation/generation`, {

@@ -675,7 +675,7 @@
         } else includedAssets = state.assets.filter(asset => asset.path);
         replaceReferenceIds = true;
       }
-      const response = await api('/api/visual/generate', json({ prompt, language: language(), images, projectMedia, requireImage: Boolean(previous || state.assets.length) }));
+      const response = await api('/api/visual/generate', json({ prompt, language: language(), images, projectMedia, requireImage: Boolean(previous || state.assets.length), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
       const resultImages = (response.images || []).filter(Boolean);
       if (!resultImages.length) throw new Error(language() === 'en' ? 'The image model returned no image.' : '图像模型没有返回图片。');
       if (replaceReferenceIds) {
