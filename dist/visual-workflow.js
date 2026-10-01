@@ -313,7 +313,9 @@
       const formData = new FormData();
       formData.append('projectId', state.projectId);
       formData.append('kind', 'reference');
-      formData.append('file', asset.file, asset.name);
+      const bytes = await asset.file.arrayBuffer();
+      const uploadFile = new File([bytes], asset.name, { type: asset.file.type || asset.type || 'image/jpeg' });
+      formData.append('file', uploadFile, asset.name);
       const part = formData.get('file');
       diagNote('postForm', { id: String(asset.id || '').slice(0, 36), index, ...fileMeta(part, 'f') });
       try {
