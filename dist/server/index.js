@@ -179,6 +179,40 @@ async function visualRoute(request, env) {
   if (!resultImages.length) return visualError(language, "Image service returned no image.");
   return json({ answer: mode === "image_editing" ? (isEnglish ? "The image editing model created a result from your reference image." : "图像编辑模型已根据你的原图生成结果。") : (isEnglish ? "The image model created a result." : "图像模型已生成结果。"), images: resultImages, generation: { provider: "bailian", model, mode, inputImageCount: inputImages.length } });
 }
+async function writingRoute(request, env) {
+  const { prompt = "", draft = "", context = [], language = "zh" } = await request.json();
+  const text = String(prompt).trim().slice(0, 8000);
+  const current = String(draft || "").slice(0, 12000);
+  const isEnglish = language === "en";
+  if (!text) return json({ error: isEnglish ? "Describe the writing you want." : "请先描述你想写的内容。" }, 400);
+  if (!env.BAILIAN_API_KEY) return json({ error: isEnglish ? "AI service is not configured." : "AI 服务尚未连接。" }, 503);
+  const modelId = env.BAILIAN_MODEL || "qwen3.8-flash";
+  const earlier = Array.isArray(context) ? context.slice(-8).map(item => `Instruction: ${String(item?.question || "").slice(0, 2000)}\nResult: ${String(item?.answer || "").slice(0, 4000)}`).join("\n\n") : "";
+  const base = (env.BAILIAN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+  const upstream = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    signal: AbortSignal.timeout(60000),
+    headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: modelId,
+      temperature: 0.4,
+      max_tokens: 4000,
+      messages: [
+        { role: "system", content: "You are the writing assistant inside AI SuperMall. Follow the user's latest instruction and return only the finished writing. Do not add a preamble or explanation unless the user asked for one. Write in the language the user requests. If they do not name a language, keep the language of their instruction and of the current draft. Do not change language because of any interface setting. When a current draft is provided, revise that draft according to the instruction instead of starting an unrelated piece. Keep details from the draft that the user did not ask to change." },
+        { role: "user", content: `Current draft:\n${current || "(none)"}\n\nEarlier turns:\n${earlier || "(none)"}\n\nLatest instruction:\n${text}` }
+      ]
+    })
+  });
+  if (!upstream.ok) {
+    const failure = await upstream.json().catch(() => ({}));
+    console.error("Writing request failed", { model: modelId, status: upstream.status, code: failure?.code || failure?.error_code || "" });
+    return json({ error: isEnglish ? "Writing service is temporarily unavailable." : "写作服务暂时不可用，请稍后重试。" }, 502);
+  }
+  const payload = await upstream.json().catch(() => ({}));
+  const result = String(payload?.choices?.[0]?.message?.content || "").trim().slice(0, 12000);
+  if (!result) return json({ error: isEnglish ? "The writing model returned no text." : "写作模型没有返回文字。" }, 502);
+  return json({ text: result });
+}
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
   const code = String(body?.code || body?.error_code || "").trim();
@@ -231,7 +265,7 @@ const safeProjectConversation = items => {
     task: String(suppliedMeta?.task || state?.task || "").slice(0, 2000)
   };
   const messages = items.filter(item => item?.type !== "workspace_state" && item?.type !== "project_meta").slice(-30).map(item => ({
-    question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000), images: safeProjectMedia(item?.images),
+    question: String(item?.question || "").slice(0, 8000), answer: String(item?.answer || "").slice(0, 12000), images: safeProjectMedia(item?.images),
     generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), mode: item.generation.mode === "image_editing" ? "image_editing" : "text_to_image", inputImageCount: Math.max(0, Math.min(10, Number(item.generation.inputImageCount) || 0)), status: "completed" } : undefined
   }));
   return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads), textLayers: safeTextLayers(state.textLayers) }, meta, ...messages] : [meta, ...messages];
@@ -491,7 +525,11 @@ async function accountRoute(request, env, url) {
       if (conversationId) return body[0] ? json(body[0]) : json({ error: "Conversation not found." }, 404);
       return json(body, response.status);
     }
-    const safeMessages = items => Array.isArray(items) ? items.slice(-50).map(item => ({ question: String(item?.question || "").slice(0, 1000), answer: String(item?.answer || "").slice(0, 2000) })) : [];
+    const safeMessages = items => Array.isArray(items) ? items.slice(-50).map(item => {
+      const message = { question: String(item?.question || "").slice(0, 8000), answer: String(item?.answer || "").slice(0, 12000) };
+      if (item?.workspace === "writing") message.workspace = "writing";
+      return message;
+    }) : [];
     if (request.method === "POST") {
       const { title, locale = "zh", messages = [] } = await request.json();
       const cleanTitle = String(title || "New conversation").trim().slice(0, 120) || "New conversation";
@@ -581,6 +619,11 @@ export default {
         console.error("Bailian model request error", { message: error instanceof Error ? error.message : String(error) });
         return json({ error: "AI service is temporarily unavailable." }, 502);
       }
+    }
+    if (url.pathname === "/api/writing/generate") {
+      if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      try { return await writingRoute(request, env); }
+      catch (error) { console.error("Writing request error", { message: error instanceof Error ? error.message : String(error) }); return json({ error: "Writing service is temporarily unavailable." }, 502); }
     }
     if (url.pathname === "/api/visual/generate") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
