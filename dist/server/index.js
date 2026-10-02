@@ -258,6 +258,112 @@ async function presentationRoute(request, env) {
   if (!deck) return json({ error: isEnglish ? "The presentation model returned no slides." : "演示模型没有返回分页内容。" }, 502);
   return json({ presentation: deck });
 }
+const videoModel = "wan3.0-video";
+const videoPathPattern = /^video\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.mp4$/i;
+const safeVideo = value => {
+  const path = String(value?.path || "");
+  if (value?.provider !== "oss" || !videoPathPattern.test(path)) return undefined;
+  return { provider: "oss", path, name: String(value?.name || "video.mp4").slice(0, 180), type: "video/mp4", kind: "generated", taskId: String(value?.taskId || "").slice(0, 80) };
+};
+const videoQuotaError = (code, message) => /quota|arrear|billing|overdue|insufficient|free.?quota|allocationquota|prepaid/i.test(`${code} ${message}`);
+const videoModelError = (code, message) => /model.?not.?found|invalidmodel|unsupportedmodel|access.?denied|not.?authorized|does not exist/i.test(`${code} ${message}`);
+function videoFailure(language, code, message) {
+  const isEnglish = language === "en";
+  if (videoQuotaError(code, message)) return json({ error: isEnglish ? "Video generation quota is currently unavailable." : "当前视频生成额度不可用。", code: "quota", status: "FAILED" }, 402);
+  if (videoModelError(code, message)) return json({ error: isEnglish ? "wan3.0-video is not available in this Singapore workspace." : "当前新加坡工作区不能使用 wan3.0-video。请在百炼控制台确认该标准模型已开通。", code: "model", status: "FAILED" }, 403);
+  const detail = String(message || "").replace(/\s+/g, " ").trim().slice(0, 180);
+  const safeDetail = detail && !/sk-|bearer|api[_-]?key/i.test(detail) ? detail : "";
+  return json({ error: safeDetail ? (isEnglish ? `Video generation failed. ${safeDetail}` : `视频生成失败。${safeDetail}`) : (isEnglish ? "Video generation failed. You can try again." : "视频生成失败，可以重新生成。"), status: "FAILED" }, 502);
+}
+async function videoCreateRoute(request, env) {
+  const { prompt = "", images = [], language = "zh" } = await request.json();
+  const text = String(prompt).trim().slice(0, 5000);
+  const isEnglish = language === "en";
+  if (!text) return json({ error: isEnglish ? "Describe the video you want." : "请先描述你想制作的视频。" }, 400);
+  const host = imageHost(env.BAILIAN_WORKSPACE_ID);
+  if (!env.BAILIAN_API_KEY || !host) return json({ error: isEnglish ? "Video service is not configured." : "视频服务尚未配置。" }, 503);
+  const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+  const files = Array.isArray(images) ? images.slice(0, 4).filter(item => allowed.has(String(item?.type || "")) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 8_000_000) : [];
+  const media = files.length === 1 ? [{ type: "first_frame", url: files[0].data }] : files.map(item => ({ type: "reference_image", url: item.data }));
+  const response = await fetch(`https://${host}/api/v1/services/aigc/video-generation/video-synthesis`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json", "X-DashScope-Async": "enable" },
+    body: JSON.stringify({
+      model: videoModel,
+      input: media.length ? { prompt: text, media } : { prompt: text },
+      parameters: { resolution: "720P", duration: 5, ratio: "adaptive", prompt_extend: false, watermark: false }
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  const output = payload.output || {};
+  const code = String(output.code || payload.code || "");
+  const message = String(output.message || payload.message || "");
+  if (!response.ok || !output.task_id) {
+    console.error("Video task create failed", { status: response.status, code });
+    return videoFailure(language, code, message);
+  }
+  return json({ taskId: String(output.task_id), status: String(output.task_status || "PENDING"), model: videoModel });
+}
+async function videoTaskRoute(request, env, url) {
+  const taskId = String(url.searchParams.get("id") || "");
+  const language = url.searchParams.get("language") === "en" ? "en" : "zh";
+  if (!/^[A-Za-z0-9-]{8,80}$/.test(taskId)) return json({ error: language === "en" ? "Invalid video task." : "视频任务无效。" }, 400);
+  const host = imageHost(env.BAILIAN_WORKSPACE_ID);
+  if (!env.BAILIAN_API_KEY || !host) return json({ error: language === "en" ? "Video service is not configured." : "视频服务尚未配置。" }, 503);
+  const response = await fetch(`https://${host}/api/v1/tasks/${taskId}`, { headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}` } });
+  const payload = await response.json().catch(() => ({}));
+  const output = payload.output || {};
+  const status = String(output.task_status || "");
+  const code = String(output.code || payload.code || "");
+  const message = String(output.message || payload.message || "");
+  if (!response.ok && !status) {
+    console.error("Video task query failed", { status: response.status, code });
+    return videoFailure(language, code, message);
+  }
+  if (status === "SUCCEEDED") {
+    const videoUrl = String(output.video_url || "");
+    if (!/^https:\/\//i.test(videoUrl)) return json({ error: language === "en" ? "The video result had no file." : "视频结果里没有文件。", status: "FAILED" }, 502);
+    return json({ taskId, status, videoUrl, model: videoModel });
+  }
+  if (status === "FAILED" || status === "CANCELED" || status === "UNKNOWN") {
+    console.error("Video task failed", { status, code });
+    return videoFailure(language, code, message);
+  }
+  return json({ taskId, status: status || "PENDING", model: videoModel });
+}
+async function videoMediaRoute(request, env, token, user, url) {
+  if (!ossConfigured(env)) return json({ error: "Private OSS storage is not configured yet." }, 503);
+  if (request.method === "GET") {
+    const path = String(url.searchParams.get("path") || "");
+    if (!videoPathPattern.test(path) || !path.startsWith(`video/${user.id}/`)) return json({ error: "Media not found." }, 404);
+    try { return json({ url: await ossPresignedUrl(env, "GET", path, 3600), provider: "oss", path }); }
+    catch (error) { console.error("Video signing failed", { message: error instanceof Error ? error.message : "unknown" }); return json({ error: "Private video preview is temporarily unavailable." }, 502); }
+  }
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  const { projectId, url: source = "", taskId = "" } = await request.json();
+  const id = String(projectId || "");
+  let remoteUrl;
+  try { remoteUrl = new URL(String(source)); } catch { return json({ error: "Video address is not valid." }, 400); }
+  if (remoteUrl.protocol !== "https:" || !/(^|\.)aliyuncs\.com$/i.test(remoteUrl.hostname)) return json({ error: "Video address is not valid." }, 400);
+  if (!projectIdPattern.test(id)) return json({ error: "Invalid project identifier." }, 400);
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  const owned = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
+  const projects = await owned.json().catch(() => []);
+  if (!owned.ok || !projects[0]) return json({ error: "Project not found." }, 404);
+  const remote = await fetch(remoteUrl);
+  if (!remote.ok) return json({ error: "The generated video could not be saved. Please generate it again." }, 502);
+  const bytes = await remote.arrayBuffer();
+  if (!bytes.byteLength || bytes.byteLength > 80 * 1024 * 1024) return json({ error: "The generated video is too large to save." }, 400);
+  const path = `video/${user.id}/${id}/${crypto.randomUUID()}.mp4`;
+  try {
+    const upload = await fetch(await ossPresignedUrl(env, "PUT", path, 600, "video/mp4"), { method: "PUT", headers: { "Content-Type": "video/mp4" }, body: bytes });
+    if (!upload.ok) return json({ error: "Private video upload failed." }, 502);
+  } catch (error) {
+    console.error("Video upload failed", { message: error instanceof Error ? error.message : "unknown" });
+    return json({ error: "Private video upload failed." }, 502);
+  }
+  return json({ video: { provider: "oss", path, name: "video.mp4", type: "video/mp4", kind: "generated", taskId: String(taskId || "").slice(0, 80) } });
+}
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
   const code = String(body?.code || body?.error_code || "").trim();
@@ -335,6 +441,8 @@ const safeProjectConversation = items => {
     };
     const presentation = safePresentation(item?.presentation);
     if (presentation) message.presentation = presentation;
+    const video = safeVideo(item?.video);
+    if (video) message.video = video;
     return message;
   });
   return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads), textLayers: safeTextLayers(state.textLayers) }, meta, ...messages] : [meta, ...messages];
@@ -534,6 +642,11 @@ async function accountRoute(request, env, url) {
     if (!user) return json({ error: "Please sign in to continue." }, 401);
     return projectMediaRoute(request, env, token, user, url);
   }
+  if (path === "/api/member/video-media") {
+    const token = bearerToken(request), user = await supabaseUser(env, token);
+    if (!user) return json({ error: "Please sign in to continue." }, 401);
+    return videoMediaRoute(request, env, token, user, url);
+  }
   if (path === "/api/member/oss-media") {
     const token = bearerToken(request), user = await supabaseUser(env, token);
     if (!user) return json({ error: "Please sign in to continue." }, 401);
@@ -596,9 +709,11 @@ async function accountRoute(request, env, url) {
     }
     const safeMessages = items => Array.isArray(items) ? items.slice(-50).map(item => {
       const message = { question: String(item?.question || "").slice(0, 8000), answer: String(item?.answer || "").slice(0, 12000) };
-      if (item?.workspace === "writing" || item?.workspace === "presentation") message.workspace = item.workspace;
+      if (item?.workspace === "writing" || item?.workspace === "presentation" || item?.workspace === "video") message.workspace = item.workspace;
       const presentation = safePresentation(item?.presentation);
       if (presentation) message.presentation = presentation;
+      const video = safeVideo(item?.video);
+      if (video) message.video = video;
       return message;
     }) : [];
     if (request.method === "POST") {
@@ -635,7 +750,7 @@ export default {
       const chinaReady = Boolean(env.CN_AUTH_URL && env.CN_AUTH_PUBLISHABLE_KEY);
       return json({ region, ready: region === "cn" ? chinaReady : globalReady });
     }
-    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations" || url.pathname === "/api/member/project-media" || url.pathname === "/api/member/oss-media") {
+    if (url.pathname.startsWith("/api/account/") || url.pathname === "/api/member/projects" || url.pathname === "/api/member/conversations" || url.pathname === "/api/member/project-media" || url.pathname === "/api/member/oss-media" || url.pathname === "/api/member/video-media") {
       try { return await accountRoute(request, env, url); }
       catch (error) {
         console.error("oss-media-diag", { step: "accountRoute-catch", path: url.pathname, errName: error instanceof Error ? error.name : "unknown", diag: "456" });
@@ -690,6 +805,16 @@ export default {
         console.error("Bailian model request error", { message: error instanceof Error ? error.message : String(error) });
         return json({ error: "AI service is temporarily unavailable." }, 502);
       }
+    }
+    if (url.pathname === "/api/video/generate") {
+      if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      try { return await videoCreateRoute(request, env); }
+      catch (error) { console.error("Video create error", { message: error instanceof Error ? error.message : String(error) }); return json({ error: "Video generation failed. You can try again.", status: "FAILED" }, 502); }
+    }
+    if (url.pathname === "/api/video/task") {
+      if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
+      try { return await videoTaskRoute(request, env, url); }
+      catch (error) { console.error("Video task error", { message: error instanceof Error ? error.message : String(error) }); return json({ error: "The video task could not be checked.", status: "FAILED" }, 502); }
     }
     if (url.pathname === "/api/presentation/generate") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
