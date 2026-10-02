@@ -27,6 +27,14 @@
   line-height: 1.75;
 }
 .writing-actions button { min-height: 44px; }
+.writing-voice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+.writing-voice-row .voice-button { min-width: 44px; min-height: 44px; border: 1px solid #d8d8d1; border-radius: 12px; background: #f1f1ed; color: #1c1c1b; font-size: 18px; cursor: pointer; }
+.writing-voice-row .voice-button.listening { background: #ef594b; color: #fff; }
+.writing-voice-row select { box-sizing: border-box; min-height: 44px; max-width: 100%; border: 1px solid #cfcfc8; border-radius: 12px; padding: 0 10px; background: #fff; color: #1c1c1b; font: 16px/1.4 inherit; }
+.writing-voice-status { margin: 0; color: #a33a30; font-size: 13px; font-weight: 700; }
+.writing-read { min-height: 44px; margin-top: 12px; border: 0; border-radius: 12px; padding: 10px 14px; background: #fff; color: #1c1c1b; font: 800 14px inherit; cursor: pointer; }
+.writing-read[aria-pressed="true"] { background: #ffb3a9; }
+.writing-read:disabled { opacity: .55; cursor: default; }
 @media (max-width: 760px) {
   .writing-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .writing-actions button { width: 100%; }

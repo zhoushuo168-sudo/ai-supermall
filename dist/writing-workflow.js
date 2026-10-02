@@ -8,10 +8,10 @@
   const nameInput = get('projectName');
   const draftKey = 'ai-supermall-writing-draft';
   const query = new URLSearchParams(location.search);
-  const state = { messages: [], projectId: '', conversationId: '', title: '', generating: false, saveAfterLogin: false };
+  const state = { messages: [], projectId: '', conversationId: '', title: '', generating: false, saveAfterLogin: false, reading: false };
   const tr = () => document.documentElement.lang === 'en' ? {
     title: 'Writing & copy',
-    description: 'Describe what you want written. Then keep revising in the same conversation.',
+    description: 'Emails, copywriting, rewriting, multilingual writing, voice input, read aloud & translation',
     panel: 'Tell AI what you want written',
     panelCopy: 'Use everyday language. The result follows your instruction, not the interface language.',
     projectName: 'Project name',
@@ -36,10 +36,15 @@
     note: 'Sign in to save this writing to your projects. The conversation is also kept in History.',
     unnamed: 'Untitled writing',
     home: 'Home',
-    projects: 'My Projects'
+    projects: 'My Projects',
+    voice: 'Voice input',
+    voiceLanguage: 'Recognition language',
+    browserLanguage: 'Browser language',
+    listening: 'Listening…',
+    read: 'Read aloud'
   } : {
     title: '写作与文案',
-    description: '直接说明你想写什么。生成后可以在同一段内容上继续修改。',
+    description: '邮件、文案、润色、多语言写作、语音输入、朗读与多语言翻译',
     panel: '告诉 AI 你想写什么',
     panelCopy: '用自然语言描述即可。生成语言以你的要求为准，不会被界面语言改掉。',
     projectName: '项目名称',
@@ -64,7 +69,12 @@
     note: '登录后可保存到项目，这段写作也会进入对话历史。',
     unnamed: '未命名写作',
     home: '首页',
-    projects: '我的项目'
+    projects: '我的项目',
+    voice: '语音输入',
+    voiceLanguage: '识别语言',
+    browserLanguage: '浏览器语言',
+    listening: '正在聆听…',
+    read: '朗读'
   };
   const language = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
   const api = async (path, options = {}) => {
@@ -100,6 +110,13 @@
     get('saveProject').textContent = text.save;
     get('writingResultTitle').textContent = text.result;
     get('writingResultCopy').textContent = text.resultCopy;
+    get('writingVoice').setAttribute('aria-label', text.voice);
+    get('writingVoice').title = text.voice;
+    get('writingVoiceLanguage').setAttribute('aria-label', text.voiceLanguage);
+    get('writingVoiceLanguage').querySelector('option[value="browser"]').textContent = text.browserLanguage;
+    get('writingRead').textContent = text.read;
+    get('writingRead').disabled = !currentText() || state.generating;
+    get('writingRead').setAttribute('aria-pressed', String(state.reading));
     get('homeLink').textContent = text.home;
     get('projectsLink').textContent = text.projects;
     get('languageToggle').textContent = language() === 'en' ? '中文' : 'EN';
@@ -259,8 +276,108 @@
     setStatus(tr().copied);
   }
 
+  function contentLanguage(text) {
+    const sample = String(text || '').slice(0, 800);
+    if (/[\u3040-\u30ff]/.test(sample)) return 'ja-JP';
+    if (/[\uac00-\ud7af]/.test(sample)) return 'ko-KR';
+    if (/[\u0600-\u06ff]/.test(sample)) return 'ar-SA';
+    if (/[\u0400-\u04ff]/.test(sample)) return 'ru-RU';
+    if (/[\u0e00-\u0e7f]/.test(sample)) return 'th-TH';
+    if (/[\u0900-\u097f]/.test(sample)) return 'hi-IN';
+    if (/[\u4e00-\u9fff]/.test(sample)) return 'zh-CN';
+    if (/[äöüß]/i.test(sample)) return 'de-DE';
+    const hits = words => words.reduce((count, word) => count + (new RegExp(`(?:^|[^a-zà-ÿ])${word}(?:[^a-zà-ÿ]|$)`, 'i').test(sample) ? 1 : 0), 0);
+    const ranked = [
+      ['de-DE', hits(['der', 'die', 'und', 'nicht', 'ein', 'ist', 'auch', 'mit'])],
+      ['fr-FR', hits(['les', 'des', 'une', 'est', 'pas', 'dans', 'pour', 'avec'])],
+      ['es-ES', hits(['los', 'las', 'una', 'por', 'para', 'está', 'como', 'más'])],
+      ['pt-BR', hits(['não', 'para', 'com', 'você', 'são', 'uma', 'dos', 'mais'])],
+      ['it-IT', hits(['che', 'non', 'per', 'sono', 'della', 'questo', 'una', 'con'])],
+      ['en-US', hits(['the', 'and', 'to', 'of', 'is', 'you', 'that', 'with'])]
+    ].sort((left, right) => right[1] - left[1]);
+    return ranked[0][1] > 0 ? ranked[0][0] : 'en-US';
+  }
+  function pickVoice(lang) {
+    const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+    const exact = lang.toLowerCase();
+    const base = exact.slice(0, 2);
+    return voices.find(voice => voice.lang.toLowerCase().replace('_', '-') === exact)
+      || voices.find(voice => voice.lang.toLowerCase().replace('_', '-').startsWith(base))
+      || null;
+  }
+  function stopReading() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    state.reading = false;
+  }
+  function readAloud() {
+    const value = currentText().trim();
+    if (!window.speechSynthesis || !value) return;
+    if (state.reading || window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      stopReading();
+      applyCopy();
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(value);
+    const lang = contentLanguage(value);
+    utterance.lang = lang;
+    const voice = pickVoice(lang);
+    if (voice) utterance.voice = voice;
+    const finish = () => { state.reading = false; applyCopy(); };
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    state.reading = true;
+    applyCopy();
+    window.speechSynthesis.speak(utterance);
+  }
+  function setupVoice() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const mic = get('writingVoice');
+    const picker = get('writingVoiceLanguage');
+    if (!Recognition) {
+      mic.hidden = true;
+      picker.hidden = true;
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    let listening = false;
+    const setListening = active => {
+      listening = active;
+      mic.classList.toggle('listening', active);
+      mic.setAttribute('aria-pressed', String(active));
+      const status = get('writingVoiceStatus');
+      status.hidden = !active;
+      status.textContent = active ? tr().listening : '';
+    };
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+    recognition.onresult = event => {
+      const parts = [];
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        if (event.results[index].isFinal) parts.push(event.results[index][0].transcript);
+      }
+      const spoken = parts.join(' ').trim();
+      if (!spoken) return;
+      const value = input.value || '';
+      const gap = value && !/\s$/.test(value) ? ' ' : '';
+      input.value = `${value}${gap}${spoken}`;
+      const cursor = input.value.length;
+      input.focus({ preventScroll: true });
+      if (typeof input.setSelectionRange === 'function') input.setSelectionRange(cursor, cursor);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    mic.addEventListener('click', () => {
+      if (listening) { recognition.stop(); return; }
+      recognition.lang = picker.value === 'browser' ? (navigator.language || 'en-US') : picker.value;
+      input.focus({ preventScroll: true });
+      try { recognition.start(); } catch { setListening(false); }
+    });
+  }
   async function generate(regenerate = false) {
     if (state.generating) return;
+    stopReading();
     const prior = regenerate ? state.messages.slice(0, -1) : state.messages;
     const instruction = (regenerate ? state.messages.at(-1)?.question : input.value).trim();
     if (!instruction) { setStatus(tr().required); input.focus(); return; }
@@ -306,10 +423,15 @@
   form.addEventListener('submit', event => { event.preventDefault(); generate(false); });
   get('writingRegenerate').addEventListener('click', () => generate(true));
   get('writingCopy').addEventListener('click', () => copyText());
+  get('writingRead').addEventListener('click', () => readAloud());
+  setupVoice();
+  if (!window.speechSynthesis) get('writingRead').hidden = true;
+  window.aiSuperMallWriting = { liveTranslation: () => ({ request: input.value, result: currentText() }) };
+  applyCopy();
   get('saveProject').addEventListener('click', () => { state.saveAfterLogin = true; persistDraft(); saveProject(true).catch(error => setStatus(error.message)); });
   nameInput.addEventListener('input', persistDraft);
   input.addEventListener('input', () => { history.replaceState(null, '', state.projectId ? `create-writing.html?project=${encodeURIComponent(state.projectId)}` : 'create-writing.html'); persistDraft(); });
-  window.addEventListener('pagehide', persistDraft);
+  window.addEventListener('pagehide', () => { stopReading(); persistDraft(); });
 
   (async () => {
     try {
