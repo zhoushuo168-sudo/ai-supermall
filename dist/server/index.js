@@ -213,6 +213,47 @@ async function writingRoute(request, env) {
   if (!result) return json({ error: isEnglish ? "The writing model returned no text." : "写作模型没有返回文字。" }, 502);
   return json({ text: result });
 }
+async function presentationRoute(request, env) {
+  const { prompt = "", presentation = null, context = [], language = "zh", timeZone = "" } = await request.json();
+  const text = String(prompt).trim().slice(0, 8000);
+  const isEnglish = language === "en";
+  if (!text) return json({ error: isEnglish ? "Describe the presentation you want." : "请先描述你想做的演示文稿。" }, 400);
+  if (!env.BAILIAN_API_KEY) return json({ error: isEnglish ? "AI service is not configured." : "AI 服务尚未连接。" }, 503);
+  const current = safePresentation(presentation);
+  const { when, zone } = clockFact(timeZone);
+  const modelId = env.BAILIAN_MODEL || "qwen3.8-flash";
+  const earlier = Array.isArray(context) ? context.slice(-6).map(item => `Instruction: ${String(item?.question || "").slice(0, 1500)}\nResult: ${String(item?.answer || "").slice(0, 2500)}`).join("\n\n") : "";
+  const base = (env.BAILIAN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+  const upstream = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    signal: AbortSignal.timeout(60000),
+    headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: modelId,
+      temperature: 0.4,
+      max_tokens: 6000,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "You create presentation slide decks. Return JSON only: {\"title\":\"\",\"slides\":[{\"title\":\"\",\"bullets\":[\"\"]}]}. Each slide is one page, not a paragraph of an article. If the user asks for a number of pages, use exactly that number, from 1 to 20. Write in the language the user requests. If they do not name a language, use the language of their request and of the current deck. Do not change language because of any interface setting. When a current deck is provided, revise that deck and keep slides the user did not ask to change. Return the full updated deck. When the request depends on today, this year, this month, or another relative time, use the supplied current date and time. Do not invent a year." },
+        { role: "user", content: `Current date/time: ${when}\nUser timezone: ${zone || "not provided"}\n\nCurrent deck:\n${current ? JSON.stringify(current) : "(none)"}\n\nEarlier turns:\n${earlier || "(none)"}\n\nLatest instruction:\n${text}` }
+      ]
+    })
+  });
+  if (!upstream.ok) {
+    const failure = await upstream.json().catch(() => ({}));
+    console.error("Presentation request failed", { model: modelId, status: upstream.status, code: failure?.code || failure?.error_code || "" });
+    return json({ error: isEnglish ? "Presentation service is temporarily unavailable." : "演示文稿服务暂时不可用，请稍后重试。" }, 502);
+  }
+  const payload = await upstream.json().catch(() => ({}));
+  const raw = String(payload?.choices?.[0]?.message?.content || "").trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  let parsed = {};
+  try { if (start >= 0 && end > start) parsed = JSON.parse(raw.slice(start, end + 1)); } catch { parsed = {}; }
+  const deck = safePresentation(parsed);
+  if (!deck) return json({ error: isEnglish ? "The presentation model returned no slides." : "演示模型没有返回分页内容。" }, 502);
+  return json({ presentation: deck });
+}
 const supabaseError = (body, status, action) => {
   const message = String(body?.msg || body?.error_description || body?.message || body?.error || "").trim();
   const code = String(body?.code || body?.error_code || "").trim();
@@ -253,6 +294,14 @@ const safeTextLayers = layers => Array.isArray(layers) ? layers.slice(0, 12).map
   align: ["left", "center", "right"].includes(layer?.align) ? layer.align : "center",
   position: ["top", "middle", "bottom"].includes(layer?.position) ? layer.position : "bottom"
 })).filter(layer => layer.text) : [];
+const safePresentation = value => {
+  const slides = Array.isArray(value?.slides) ? value.slides.slice(0, 20).map(slide => ({
+    title: String(slide?.title || "").trim().slice(0, 180),
+    bullets: Array.isArray(slide?.bullets) ? slide.bullets.slice(0, 8).map(item => String(item || "").trim().slice(0, 400)).filter(Boolean) : []
+  })).filter(slide => slide.title || slide.bullets.length) : [];
+  if (!slides.length) return undefined;
+  return { title: String(value?.title || "").trim().slice(0, 180), slides };
+};
 const safeProjectConversation = items => {
   if (!Array.isArray(items)) return [];
   const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
@@ -264,10 +313,15 @@ const safeProjectConversation = items => {
     intent: ["visual", "video", "writing", "presentation", "knowledge"].includes(suppliedMeta?.intent) ? suppliedMeta.intent : inferredWorkspace,
     task: String(suppliedMeta?.task || state?.task || "").slice(0, 2000)
   };
-  const messages = items.filter(item => item?.type !== "workspace_state" && item?.type !== "project_meta").slice(-30).map(item => ({
-    question: String(item?.question || "").slice(0, 8000), answer: String(item?.answer || "").slice(0, 12000), images: safeProjectMedia(item?.images),
-    generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), mode: item.generation.mode === "image_editing" ? "image_editing" : "text_to_image", inputImageCount: Math.max(0, Math.min(10, Number(item.generation.inputImageCount) || 0)), status: "completed" } : undefined
-  }));
+  const messages = items.filter(item => item?.type !== "workspace_state" && item?.type !== "project_meta").slice(-30).map(item => {
+    const message = {
+      question: String(item?.question || "").slice(0, 8000), answer: String(item?.answer || "").slice(0, 12000), images: safeProjectMedia(item?.images),
+      generation: item?.generation?.provider === "bailian" ? { provider: "bailian", model: String(item.generation.model || "wan2.7-image").slice(0, 120), mode: item.generation.mode === "image_editing" ? "image_editing" : "text_to_image", inputImageCount: Math.max(0, Math.min(10, Number(item.generation.inputImageCount) || 0)), status: "completed" } : undefined
+    };
+    const presentation = safePresentation(item?.presentation);
+    if (presentation) message.presentation = presentation;
+    return message;
+  });
   return state ? [{ type: "workspace_state", workspace: "visual", task: String(state.task || "").slice(0, 2000), status: state.status === "completed" ? "completed" : "editing", finalImage: normalizeMediaDescriptor(state.finalImage), uploads: safeProjectMedia(state.uploads), textLayers: safeTextLayers(state.textLayers) }, meta, ...messages] : [meta, ...messages];
 };
 const bytesFromDataUrl = value => {
@@ -527,7 +581,9 @@ async function accountRoute(request, env, url) {
     }
     const safeMessages = items => Array.isArray(items) ? items.slice(-50).map(item => {
       const message = { question: String(item?.question || "").slice(0, 8000), answer: String(item?.answer || "").slice(0, 12000) };
-      if (item?.workspace === "writing") message.workspace = "writing";
+      if (item?.workspace === "writing" || item?.workspace === "presentation") message.workspace = item.workspace;
+      const presentation = safePresentation(item?.presentation);
+      if (presentation) message.presentation = presentation;
       return message;
     }) : [];
     if (request.method === "POST") {
@@ -619,6 +675,11 @@ export default {
         console.error("Bailian model request error", { message: error instanceof Error ? error.message : String(error) });
         return json({ error: "AI service is temporarily unavailable." }, 502);
       }
+    }
+    if (url.pathname === "/api/presentation/generate") {
+      if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      try { return await presentationRoute(request, env); }
+      catch (error) { console.error("Presentation request error", { message: error instanceof Error ? error.message : String(error) }); return json({ error: "Presentation service is temporarily unavailable." }, 502); }
     }
     if (url.pathname === "/api/writing/generate") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);

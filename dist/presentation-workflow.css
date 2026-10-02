@@ -1,0 +1,30 @@
+.presentation-workspace { overflow-x: hidden; }
+.presentation-workspace .workspace-main,
+.presentation-workspace .workspace-grid,
+.presentation-workspace .workspace-panel,
+.presentation-workspace .workspace-form,
+.presentation-workspace .workspace-results { min-width: 0; max-width: 100%; }
+.presentation-grid { grid-template-columns: minmax(0, 1fr); }
+.presentation-workspace .workspace-project-name,
+.presentation-workspace .workspace-form textarea { box-sizing: border-box; width: 100%; max-width: 100%; }
+.presentation-actions button { min-height: 44px; }
+.presentation-voice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+.presentation-voice-row .voice-button { flex: 0 0 auto; }
+.presentation-voice-row select { box-sizing: border-box; min-height: 44px; max-width: 100%; border: 1px solid #cfcfc8; border-radius: 12px; padding: 0 10px; background: #fff; color: #1c1c1b; font: 16px/1.4 inherit; }
+.presentation-voice-row .voice-status { margin: 0; max-width: none; text-align: left; }
+.presentation-stage { display: grid; gap: 16px; margin-top: 16px; min-width: 0; }
+.slide-card { width: min(100%, 920px); margin: 0 auto; box-sizing: border-box; aspect-ratio: 16 / 9; padding: 5.5% 7% 6%; border-radius: 14px; border-top: 6px solid #ff5c4d; background: #fff; color: #1c1c1b; overflow: auto; box-shadow: 0 10px 24px #00000022; }
+.slide-card header { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.slide-index { flex: 0 0 auto; color: #ff5c4d; font-size: 13px; font-weight: 800; }
+.slide-card h3 { margin: 0; min-width: 0; font-size: clamp(22px, 3vw, 34px); letter-spacing: -.03em; line-height: 1.25; overflow-wrap: anywhere; }
+.slide-card ul { margin: 18px 0 0; padding-left: 1.15em; }
+.slide-card li { margin: 8px 0; font-size: clamp(15px, 1.7vw, 18px); line-height: 1.45; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .presentation-voice-row .voice-button { width: 40px; height: 40px; }
+  .presentation-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .presentation-actions button { width: 100%; }
+  .presentation-workspace .workspace-form textarea { font-size: 16px; }
+  .slide-card { aspect-ratio: auto; min-height: 220px; padding: 18px 16px 22px; }
+  .slide-card h3 { font-size: 22px; }
+  .slide-card li { font-size: 16px; }
+}
