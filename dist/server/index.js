@@ -214,28 +214,32 @@ async function writingRoute(request, env) {
   return json({ text: result });
 }
 async function presentationRoute(request, env) {
-  const { prompt = "", presentation = null, context = [], language = "zh", timeZone = "" } = await request.json();
+  const { prompt = "", presentation = null, context = [], language = "zh", timeZone = "", imagePlan = false } = await request.json();
   const text = String(prompt).trim().slice(0, 8000);
   const isEnglish = language === "en";
   if (!text) return json({ error: isEnglish ? "Describe the presentation you want." : "请先描述你想做的演示文稿。" }, 400);
   if (!env.BAILIAN_API_KEY) return json({ error: isEnglish ? "AI service is not configured." : "AI 服务尚未连接。" }, 503);
   const current = safePresentation(presentation);
+  const deckForModel = current ? { title: current.title, slides: current.slides.map(slide => ({ title: slide.title, bullets: slide.bullets, imagePrompt: slide.imagePrompt || "" })) } : null;
   const { when, zone } = clockFact(timeZone);
   const modelId = env.BAILIAN_MODEL || "qwen3.8-flash";
   const earlier = Array.isArray(context) ? context.slice(-6).map(item => `Instruction: ${String(item?.question || "").slice(0, 1500)}\nResult: ${String(item?.answer || "").slice(0, 2500)}`).join("\n\n") : "";
   const base = (env.BAILIAN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+  const system = imagePlan
+    ? "You write image prompts for an existing slide deck. Return JSON only: {\"title\":\"\",\"slides\":[{\"title\":\"\",\"bullets\":[\"\"],\"imagePrompt\":\"\"}]}. Copy the title, bullets, slide count, and order exactly. Do not rewrite the wording. imagePrompt is one short visual description for an image generator. It must not ask for words, letters, or captions inside the image. Never put 配图建议 or any image suggestion into bullets."
+    : "You create presentation slide decks. Return JSON only: {\"title\":\"\",\"slides\":[{\"title\":\"\",\"bullets\":[\"\"],\"imagePrompt\":\"\"}]}. Each slide is one page, not an article. If the user asks for a number of pages, use exactly that number, from 1 to 20. Keep each title short. Use 3 to 5 short bullet points, one line each, never a paragraph. Write in the language the user requests. If they do not name a language, use the language of their request and of the current deck. Do not change language because of any interface setting. When a current deck is provided, revise that deck and keep slides the user did not ask to change. Return the full updated deck. Never write 配图建议, image suggestions, or image captions in bullets. imagePrompt is optional internal text and is not slide body. When the request depends on today, this year, this month, or another relative time, use the supplied current date and time. Do not invent a year.";
   const upstream = await fetch(`${base}/chat/completions`, {
     method: "POST",
     signal: AbortSignal.timeout(60000),
     headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: modelId,
-      temperature: 0.4,
+      temperature: imagePlan ? 0.2 : 0.4,
       max_tokens: 6000,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "You create presentation slide decks. Return JSON only: {\"title\":\"\",\"slides\":[{\"title\":\"\",\"bullets\":[\"\"]}]}. Each slide is one page, not a paragraph of an article. If the user asks for a number of pages, use exactly that number, from 1 to 20. Write in the language the user requests. If they do not name a language, use the language of their request and of the current deck. Do not change language because of any interface setting. When a current deck is provided, revise that deck and keep slides the user did not ask to change. Return the full updated deck. When the request depends on today, this year, this month, or another relative time, use the supplied current date and time. Do not invent a year." },
-        { role: "user", content: `Current date/time: ${when}\nUser timezone: ${zone || "not provided"}\n\nCurrent deck:\n${current ? JSON.stringify(current) : "(none)"}\n\nEarlier turns:\n${earlier || "(none)"}\n\nLatest instruction:\n${text}` }
+        { role: "system", content: system },
+        { role: "user", content: `Current date/time: ${when}\nUser timezone: ${zone || "not provided"}\n\nCurrent deck:\n${deckForModel ? JSON.stringify(deckForModel) : "(none)"}\n\nEarlier turns:\n${earlier || "(none)"}\n\nLatest instruction:\n${text}` }
       ]
     })
   });
@@ -295,10 +299,21 @@ const safeTextLayers = layers => Array.isArray(layers) ? layers.slice(0, 12).map
   position: ["top", "middle", "bottom"].includes(layer?.position) ? layer.position : "bottom"
 })).filter(layer => layer.text) : [];
 const safePresentation = value => {
-  const slides = Array.isArray(value?.slides) ? value.slides.slice(0, 20).map(slide => ({
-    title: String(slide?.title || "").trim().slice(0, 180),
-    bullets: Array.isArray(slide?.bullets) ? slide.bullets.slice(0, 8).map(item => String(item || "").trim().slice(0, 400)).filter(Boolean) : []
-  })).filter(slide => slide.title || slide.bullets.length) : [];
+  const slides = Array.isArray(value?.slides) ? value.slides.slice(0, 20).map(slide => {
+    let imagePrompt = String(slide?.imagePrompt || "").trim().slice(0, 500);
+    const bullets = Array.isArray(slide?.bullets) ? slide.bullets.slice(0, 8).map(item => String(item || "").trim()).map(item => {
+      const suggestion = /^(?:配图建议|图片建议|建议配图|插图建议|image suggestion|suggested image)\s*[:：]\s*(.+)$/i.exec(item);
+      if (!suggestion) return item.slice(0, 400);
+      if (!imagePrompt) imagePrompt = suggestion[1].slice(0, 500);
+      return "";
+    }).filter(Boolean) : [];
+    const image = normalizeMediaDescriptor(slide?.image);
+    const stored = validMediaDescriptor(image) ? image : undefined;
+    const next = { title: String(slide?.title || "").trim().slice(0, 180), bullets };
+    if (imagePrompt) next.imagePrompt = imagePrompt;
+    if (stored) next.image = stored;
+    return next;
+  }).filter(slide => slide.title || slide.bullets.length || slide.image) : [];
   if (!slides.length) return undefined;
   return { title: String(value?.title || "").trim().slice(0, 180), slides };
 };

@@ -20,7 +20,7 @@ const presentationTools = (() => {
     let offset = 0;
     files.forEach(file => {
       const name = encoder.encode(file.name);
-      const data = encoder.encode(file.data);
+      const data = file.bytes instanceof Uint8Array ? file.bytes : encoder.encode(file.data);
       const crc = crc32(data);
       const local = new Uint8Array(30 + name.length);
       const view = new DataView(local.buffer);
@@ -59,10 +59,13 @@ const presentationTools = (() => {
   };
   const xml = value => String(value || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
   const run = (text, size, bold) => `<a:r><a:rPr lang="en-US" sz="${size}"${bold ? ' b="1"' : ''} dirty="0"><a:solidFill><a:srgbClr val="1C1C1B"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Microsoft YaHei"/><a:cs typeface="Arial"/></a:rPr><a:t>${xml(text)}</a:t></a:r>`;
-  const slideXml = slide => {
-    const bullets = (slide.bullets || []).map(item => `<a:p><a:pPr marL="171450" indent="-171450"><a:buFont typeface="Arial"/><a:buChar char="•"/></a:pPr>${run(item, 1800, false)}</a:p>`).join('') || '<a:p/>';
+  const slideXml = (slide, imageRel) => {
+    const withImage = Boolean(imageRel);
+    const bodyWidth = withImage ? 6400800 : 11094720;
+    const bullets = (slide.bullets || []).map(item => `<a:p><a:pPr marL="171450" indent="-171450"><a:buFont typeface="Arial"/><a:buChar char="•"/></a:pPr>${run(item, withImage ? 1600 : 1800, false)}</a:p>`).join('') || '<a:p/>';
+    const picture = withImage ? `<p:pic><p:nvPicPr><p:cNvPr id="5" name="Picture"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${imageRel}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="7132320" y="1463040"/><a:ext cx="4511040" cy="4511040"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>` : '';
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr><p:sp><p:nvSpPr><p:cNvPr id="2" name="Accent"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="12192000" cy="91440"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FF5C4D"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Title"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="548640" y="365760"/><a:ext cx="11094720" cy="1005840"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"><a:normAutofit/></a:bodyPr><a:lstStyle/><a:p>${run(slide.title || '', 3200, true)}</a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="4" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="548640" y="1554480"/><a:ext cx="11094720" cy="4754880"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"><a:normAutofit/></a:bodyPr><a:lstStyle/>${bullets}</p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr><p:sp><p:nvSpPr><p:cNvPr id="2" name="Accent"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="12192000" cy="91440"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FF5C4D"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Title"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="548640" y="274320"/><a:ext cx="11094720" cy="868680"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"><a:normAutofit/></a:bodyPr><a:lstStyle/><a:p>${run(slide.title || '', 2800, true)}</a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="4" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="548640" y="1371600"/><a:ext cx="${bodyWidth}" cy="4937760"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0"><a:normAutofit/></a:bodyPr><a:lstStyle/>${bullets}</p:txBody></p:sp>${picture}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
   };
   const group = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`;
   const emptyTree = `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>`;
@@ -71,7 +74,7 @@ const presentationTools = (() => {
     const slides = deck.slides || [];
     const rel = items => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${items}</Relationships>`;
     const files = [
-      { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${slides.map((_, index) => `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join('')}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>` },
+      { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="webp" ContentType="image/webp"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${slides.map((_, index) => `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join('')}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>` },
       { name: '_rels/.rels', data: rel('<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>') },
       { name: 'docProps/core.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xml(deck.title || 'Presentation')}</dc:title><dc:creator>AI SuperMall</dc:creator></cp:coreProperties>` },
       { name: 'docProps/app.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>AI SuperMall</Application><Slides>${slides.length}</Slides><PresentationFormat>On-screen Show (16:9)</PresentationFormat></Properties>` },
@@ -84,8 +87,11 @@ const presentationTools = (() => {
       { name: 'ppt/theme/theme1.xml', data: theme }
     ];
     slides.forEach((slide, index) => {
-      files.push({ name: `ppt/slides/slide${index + 1}.xml`, data: slideXml(slide) });
-      files.push({ name: `ppt/slides/_rels/slide${index + 1}.xml.rels`, data: rel('<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>') });
+      const ext = slide.imageType === 'image/jpeg' ? 'jpeg' : slide.imageType === 'image/webp' ? 'webp' : 'png';
+      const hasImage = slide.imageBytes instanceof Uint8Array && slide.imageBytes.length;
+      if (hasImage) files.push({ name: `ppt/media/image${index + 1}.${ext}`, bytes: slide.imageBytes });
+      files.push({ name: `ppt/slides/slide${index + 1}.xml`, data: slideXml(slide, hasImage ? 'rId2' : '') });
+      files.push({ name: `ppt/slides/_rels/slide${index + 1}.xml.rels`, data: rel(`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>${hasImage ? `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${index + 1}.${ext}"/>` : ''}`) });
     });
     return zipStore(files);
   };
@@ -113,6 +119,7 @@ const presentationTools = (() => {
     download: 'Download PowerPoint', save: 'Save as project',
     saving: 'Saving your project…', saved: 'Saved to your project.', generating: 'AI is creating your slides…',
     required: 'Describe the presentation you want.', login: 'Sign in to save this presentation.',
+    imagesDone: 'Images added to the slides.', imagesPartial: 'Some images could not be created. The finished ones are on the slides.',
     resultCopy: 'Ask for a change below. The next result revises this deck.',
     note: 'Sign in to save this presentation to your projects. The conversation is also kept in History.',
     unnamed: 'Untitled presentation', home: 'Home', projects: 'My Projects',
@@ -130,6 +137,7 @@ const presentationTools = (() => {
     download: '下载 PowerPoint', save: '保存为项目',
     saving: '正在保存项目…', saved: '已保存到项目。', generating: 'AI 正在生成演示文稿…',
     required: '请先描述你想做的演示文稿。', login: '请先登录后再保存。',
+    imagesDone: '图片已加入幻灯片。', imagesPartial: '有的图片没有生成，已经完成的图片已放在幻灯片上。',
     resultCopy: '在下方继续提出修改。下一次结果会基于这套幻灯片。',
     note: '登录后可保存到项目，这段演示也会进入对话历史。',
     unnamed: '未命名演示', home: '首页', projects: '我的项目',
@@ -155,6 +163,53 @@ const presentationTools = (() => {
   };
   const defaultTitle = () => String(state.messages[0]?.question || input.value || '').replace(/\s+/g, ' ').trim().slice(0, 40) || tr().unnamed;
   const deckText = deck => !deck ? '' : [deck.title, ...(deck.slides || []).map((slide, index) => `${index + 1}. ${slide.title}\n${(slide.bullets || []).map(item => `• ${item}`).join('\n')}`)].filter(Boolean).join('\n\n');
+  const suggestionText = /^((?:配图建议|图片建议|建议配图|插图建议|image suggestion|suggested image)\s*[:：]\s*)(.+)$/i;
+  function pullSuggestions(deck) {
+    (deck?.slides || []).forEach(slide => {
+      const kept = [];
+      (slide.bullets || []).forEach(item => {
+        const match = suggestionText.exec(String(item || '').trim());
+        if (match) { if (!slide.imagePrompt) slide.imagePrompt = match[2].slice(0, 500); return; }
+        if (String(item || '').trim()) kept.push(item);
+      });
+      slide.bullets = kept;
+    });
+    return deck;
+  }
+  function imageRequest(text) {
+    const mentions = /(图片|配图|插图|照片|图像|\bimages?\b|\bpictures?\b|\bphotos?\b)/i.test(text);
+    if (!mentions) return null;
+    const replace = /(换(一?张)?图|更换图片|重新(生成|制作|来).{0,16}(图|图片|配图)|所有图片重新|regenerate .{0,24}(image|picture|photo)|replace .{0,16}(image|picture|photo))/i.test(text);
+    const all = /(每[一]?[页张]|所有(幻灯片|页面|页)|全部(幻灯片|页面)?|each slide|every slide|all slides)/i.test(text);
+    const indexes = new Set();
+    for (const match of text.matchAll(/第\s*(\d+)\s*[页张]|slide\s*(\d+)/gi)) indexes.add(Number(match[1] || match[2]) - 1);
+    if (/这一页|本页|当前页|this slide/i.test(text) && !indexes.size) indexes.add(0);
+    const createsDeck = /(做|生成|制作|创建|write|create|make).{0,16}(演示|幻灯片|ppt|presentation|页)/i.test(text);
+    const textEdit = /(写短|缩短|简短|改短|改成|翻译|删除|增加一页|加一页|语气|标题|正文|文字|英文|中文|专业)/.test(text);
+    return { replace, targets: indexes.size && !all ? indexes : 'all', onlyImages: !createsDeck && !textEdit };
+  }
+  function mergeImages(previous, next, request) {
+    const used = new Set();
+    return (next?.slides || []).map((slide, index) => {
+      const replaceThis = request?.replace && (request.targets === 'all' || request.targets.has(index));
+      let found = -1;
+      if (!replaceThis) {
+        found = (previous || []).findIndex((item, itemIndex) => !used.has(itemIndex) && item?.title && item.title === slide.title && (item.image || item.imageUrl));
+        if (found < 0 && previous?.[index] && !used.has(index)) found = index;
+      }
+      if (found >= 0) used.add(found);
+      const source = found >= 0 ? previous[found] : null;
+      return { ...slide, imagePrompt: slide.imagePrompt || source?.imagePrompt || '', image: replaceThis ? undefined : source?.image, imageUrl: replaceThis ? '' : (source?.imageUrl || '') };
+    });
+  }
+  function illustrateIndexes(deck, request) {
+    if (!request) return [];
+    return (deck.slides || []).map((slide, index) => index).filter(index => {
+      const targeted = request.targets === 'all' || request.targets.has(index);
+      if (!targeted || index < 0 || index >= deck.slides.length) return false;
+      return request.replace || !(deck.slides[index].image?.path || deck.slides[index].imageUrl);
+    });
+  }
 
   function applyCopy() {
     const text = tr();
@@ -190,23 +245,37 @@ const presentationTools = (() => {
     const stage = get('presentationSlides');
     stage.replaceChildren();
     (deck?.slides || []).forEach((slide, index) => {
-      const card = document.createElement('article');
+      const frame = document.createElement('article');
+      const canvas = document.createElement('div');
       const header = document.createElement('header');
       const number = document.createElement('span');
       const title = document.createElement('h3');
+      const body = document.createElement('div');
       const list = document.createElement('ul');
-      card.className = 'slide-card';
+      frame.className = 'slide-frame';
+      canvas.className = 'slide-canvas';
       number.className = 'slide-index';
       number.textContent = language() === 'en' ? `${tr().slide} ${index + 1}` : `${tr().slide} ${index + 1} 页`;
       title.textContent = slide.title || '';
+      body.className = slide.imageUrl ? 'slide-body' : 'slide-body no-image';
       (slide.bullets || []).forEach(item => {
+        if (suggestionText.test(String(item || '').trim())) return;
         const line = document.createElement('li');
         line.textContent = item;
         list.append(line);
       });
       header.append(number, title);
-      card.append(header, list);
-      stage.append(card);
+      body.append(list);
+      if (slide.imageUrl) {
+        const photo = document.createElement('img');
+        photo.className = 'slide-photo';
+        photo.alt = '';
+        photo.src = slide.imageUrl;
+        body.append(photo);
+      }
+      canvas.append(header, body);
+      frame.append(canvas);
+      stage.append(frame);
     });
     get('workspaceResults').hidden = !deck;
     applyCopy();
@@ -308,13 +377,87 @@ const presentationTools = (() => {
     state.messages = (project.conversation || []).filter(item => item?.type !== 'project_meta' && item?.type !== 'workspace_state').map(item => ({
       question: item.question || '', answer: item.answer || '', workspace: 'presentation', presentation: item.presentation || null
     })).filter(item => item.presentation?.slides?.length || item.question);
+    state.messages.forEach(message => { if (message.presentation) pullSuggestions(message.presentation); });
+    await hydrateImages();
     input.value = '';
     return true;
   }
-  function downloadDeck() {
+  async function slideImageUrl(slide) {
+    if (slide?.image?.path) {
+      const endpoint = slide.image.provider === 'oss' ? '/api/member/oss-media?provider=oss&path=' : '/api/member/project-media?path=';
+      try { return (await api(endpoint + encodeURIComponent(slide.image.path))).url; } catch { return slide.imageUrl || ''; }
+    }
+    return slide?.imageUrl || '';
+  }
+  async function hydrateImages() {
+    const jobs = [];
+    state.messages.forEach(message => (message.presentation?.slides || []).forEach(slide => {
+      if (!slide?.image?.path) return;
+      jobs.push(slideImageUrl(slide).then(url => { if (url) slide.imageUrl = url; }));
+    }));
+    await Promise.all(jobs);
+  }
+  async function storeSlideImage(slide, remoteUrl) {
+    slide.imageUrl = remoteUrl;
+    if (!(await signedIn())) return;
+    if (!state.projectId) await saveProject(false);
+    if (!state.projectId) return;
+    const result = await api('/api/member/project-media', json({ projectId: state.projectId, media: [{ clientId: 'slide', url: remoteUrl, name: 'slide-image.png', kind: 'generated' }] }));
+    const media = result.media?.[0];
+    if (!media?.path) return;
+    slide.image = { provider: 'supabase', path: media.path, name: media.name || 'slide-image.png', type: media.type || 'image/png', kind: 'generated' };
+    slide.imageUrl = await slideImageUrl(slide) || remoteUrl;
+    await saveProject(false);
+  }
+  async function illustrate(deck, indexes) {
+    let failed = 0;
+    for (let cursor = 0; cursor < indexes.length; cursor += 1) {
+      const slide = deck.slides[indexes[cursor]];
+      setStatus(language() === 'en' ? `Creating image ${cursor + 1} of ${indexes.length}…` : `正在生成图片（${cursor + 1}/${indexes.length}）…`);
+      const description = slide.imagePrompt || [slide.title, ...(slide.bullets || [])].filter(Boolean).join('。');
+      try {
+        const response = await api('/api/visual/generate', json({
+          prompt: `演示文稿配图，画面中不要出现文字。${description}`,
+          language: language(), images: [], projectMedia: [], requireImage: false,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        }));
+        const remoteUrl = (response.images || []).find(item => typeof item === 'string' && /^https?:\/\//i.test(item));
+        if (!remoteUrl) throw new Error('no image');
+        await storeSlideImage(slide, remoteUrl);
+        render();
+      } catch { failed += 1; }
+    }
+    return failed;
+  }
+  async function planImagePrompts(deck, instruction) {
+    const planned = await api('/api/presentation/generate', json({
+      prompt: instruction, presentation: deckPayload(deck), imagePlan: true, language: language(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    }));
+    (deck.slides || []).forEach((slide, index) => {
+      const prompt = planned.presentation?.slides?.[index]?.imagePrompt;
+      if (prompt) slide.imagePrompt = prompt;
+    });
+  }
+  async function downloadDeck() {
     const deck = currentDeck();
     if (!deck) return;
-    const blob = presentationTools.buildPptx(deck);
+    const slides = [];
+    for (const slide of deck.slides || []) {
+      const next = { title: slide.title, bullets: slide.bullets };
+      const url = await slideImageUrl(slide);
+      if (url) {
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            next.imageBytes = new Uint8Array(await response.arrayBuffer());
+            next.imageType = String(response.headers.get('content-type') || slide.image?.type || '').split(';')[0].toLowerCase();
+          }
+        } catch {}
+      }
+      slides.push(next);
+    }
+    const blob = presentationTools.buildPptx({ title: deck.title, slides });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     const name = (typedTitle() || state.title || deck.title || 'presentation').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 80) || 'presentation';
@@ -380,6 +523,10 @@ const presentationTools = (() => {
       begin();
     });
   }
+  function deckPayload(deck) {
+    if (!deck?.slides?.length) return null;
+    return { title: deck.title || '', slides: deck.slides.map(slide => ({ title: slide.title || '', bullets: slide.bullets || [], imagePrompt: slide.imagePrompt || '', image: slide.image || undefined })) };
+  }
   async function generate(regenerate = false) {
     if (state.generating) return;
     const prior = regenerate ? state.messages.slice(0, -1) : state.messages;
@@ -389,14 +536,25 @@ const presentationTools = (() => {
     applyCopy();
     setStatus(tr().generating);
     try {
-      const response = await api('/api/presentation/generate', json({
-        prompt: instruction,
-        presentation: prior.at(-1)?.presentation || null,
-        context: prior.slice(-6).map(item => ({ question: item.question, answer: item.answer })),
-        language: language(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-      }));
-      const deck = response.presentation;
+      const pictures = imageRequest(instruction);
+      const previous = prior.at(-1)?.presentation || null;
+      let deck;
+      if (pictures?.onlyImages && previous?.slides?.length) {
+        deck = JSON.parse(JSON.stringify(previous));
+        pullSuggestions(deck);
+      } else {
+        const response = await api('/api/presentation/generate', json({
+          prompt: instruction,
+          presentation: deckPayload(previous),
+          context: prior.slice(-6).map(item => ({ question: item.question, answer: item.answer })),
+          language: language(),
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        }));
+        deck = response.presentation;
+        pullSuggestions(deck);
+        deck.slides.forEach(slide => { slide.bullets = (slide.bullets || []).slice(0, 5); });
+        deck.slides = mergeImages(previous?.slides || [], deck, pictures);
+      }
       const answer = deckText(deck);
       if (regenerate) Object.assign(state.messages[state.messages.length - 1], { answer, presentation: deck, workspace: 'presentation' });
       else {
@@ -405,11 +563,20 @@ const presentationTools = (() => {
       }
       if (!state.title && !typedTitle()) state.title = defaultTitle();
       render();
+      const indexes = illustrateIndexes(deck, pictures);
+      if (indexes.length && (pictures.replace || indexes.some(index => !deck.slides[index].imagePrompt))) {
+        try { await planImagePrompts(deck, instruction); } catch {}
+      }
+      const failed = indexes.length ? await illustrate(deck, indexes) : 0;
+      deck.answer = answer;
+      const latest = state.messages.at(-1);
+      if (latest) latest.answer = deckText(deck);
       persistDraft();
       history.replaceState(null, '', state.projectId ? `create-presentation.html?project=${encodeURIComponent(state.projectId)}` : 'create-presentation.html');
       await saveHistory();
-      if (state.projectId) await saveProject(false);
-      else setStatus('');
+      if (state.projectId || indexes.length) await saveProject(false);
+      if (indexes.length) setStatus(failed ? tr().imagesPartial : tr().imagesDone);
+      else if (!state.projectId) setStatus('');
     } catch (error) { setStatus(error.message); }
     finally { state.generating = false; applyCopy(); }
   }
@@ -424,7 +591,7 @@ const presentationTools = (() => {
   });
   form.addEventListener('submit', event => { event.preventDefault(); generate(false); });
   get('presentationRegenerate').addEventListener('click', () => generate(true));
-  get('presentationDownload').addEventListener('click', downloadDeck);
+  get('presentationDownload').addEventListener('click', () => downloadDeck().catch(error => setStatus(error.message)));
   get('saveProject').addEventListener('click', () => { state.saveAfterLogin = true; persistDraft(); saveProject(true).catch(error => setStatus(error.message)); });
   nameInput.addEventListener('input', persistDraft);
   input.addEventListener('input', () => { history.replaceState(null, '', state.projectId ? `create-presentation.html?project=${encodeURIComponent(state.projectId)}` : 'create-presentation.html'); persistDraft(); });
