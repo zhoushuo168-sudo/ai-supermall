@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>AI SuperMall</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=writing-mic-1">
   <link rel="stylesheet" href="workspace.css">
-  <link rel="stylesheet" href="writing-workflow.css?v=writing-voice-1">
+  <link rel="stylesheet" href="writing-workflow.css?v=writing-mic-1">
   <link rel="stylesheet" href="mobile-navigation.css">
   <link rel="stylesheet" href="ios-input-nozoom.css">
 </head>
@@ -27,7 +27,7 @@
           <label id="taskInputLabel" for="taskInput">你的需求</label>
           <textarea id="taskInput" required></textarea>
           <div class="writing-voice-row">
-            <button type="button" id="writingVoice" class="voice-button" aria-pressed="false">🎙️</button>
+            <button type="button" id="writingVoice" class="voice-button" aria-pressed="false">◉</button>
             <select id="writingVoiceLanguage" aria-label="识别语言">
               <option value="browser">浏览器语言</option>
               <option value="zh-CN">中文</option>
@@ -42,7 +42,7 @@
               <option value="ru-RU">Русский</option>
               <option value="ar-SA">العربية</option>
             </select>
-            <p id="writingVoiceStatus" class="writing-voice-status" hidden></p>
+            <p id="writingVoiceStatus" class="voice-status writing-voice-status" hidden></p>
           </div>
           <div class="workspace-actions writing-actions">
             <button id="workspaceSubmit" type="submit"></button>
@@ -65,7 +65,7 @@
     </section>
   </main>
   <nav class="mobile-app-nav" aria-label="Mobile navigation"><a href="index.html" data-mobile-destination="home">Home</a><a href="index.html#discover" data-mobile-destination="tools">AI Tools</a><a href="account.html?view=chats" data-mobile-destination="history">History</a><a href="account.html?view=projects" data-mobile-destination="projects">Projects</a><a href="account.html?view=account">Account</a></nav>
-  <script src="writing-workflow.js?v=writing-voice-1"></script>
+  <script src="writing-workflow.js?v=writing-mic-1"></script>
   <script src="mobile-navigation.js"></script>
 </body>
 </html>

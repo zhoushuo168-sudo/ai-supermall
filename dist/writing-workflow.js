@@ -339,20 +339,44 @@
       return;
     }
     const recognition = new Recognition();
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    let listening = false;
+    let keepListening = false;
+    let silenceTimer = 0;
+    const silenceLimit = 90000;
     const setListening = active => {
-      listening = active;
       mic.classList.toggle('listening', active);
       mic.setAttribute('aria-pressed', String(active));
       const status = get('writingVoiceStatus');
       status.hidden = !active;
       status.textContent = active ? tr().listening : '';
     };
+    const clearSilence = () => clearTimeout(silenceTimer);
+    const armSilence = () => {
+      clearSilence();
+      silenceTimer = setTimeout(() => {
+        keepListening = false;
+        try { recognition.stop(); } catch {}
+        setListening(false);
+      }, silenceLimit);
+    };
+    const begin = () => {
+      recognition.lang = picker.value === 'browser' ? (navigator.language || 'en-US') : picker.value;
+      try { recognition.start(); } catch {}
+    };
     recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
+    recognition.onend = () => {
+      if (!keepListening) { setListening(false); return; }
+      setTimeout(() => { if (keepListening) begin(); }, 250);
+    };
+    recognition.onerror = event => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
+        keepListening = false;
+        clearSilence();
+        setListening(false);
+      }
+    };
     recognition.onresult = event => {
       const parts = [];
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -367,12 +391,20 @@
       input.focus({ preventScroll: true });
       if (typeof input.setSelectionRange === 'function') input.setSelectionRange(cursor, cursor);
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      armSilence();
     };
     mic.addEventListener('click', () => {
-      if (listening) { recognition.stop(); return; }
-      recognition.lang = picker.value === 'browser' ? (navigator.language || 'en-US') : picker.value;
+      if (keepListening) {
+        keepListening = false;
+        clearSilence();
+        try { recognition.stop(); } catch {}
+        setListening(false);
+        return;
+      }
+      keepListening = true;
       input.focus({ preventScroll: true });
-      try { recognition.start(); } catch { setListening(false); }
+      armSilence();
+      begin();
     });
   }
   async function generate(regenerate = false) {
