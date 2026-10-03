@@ -97,3 +97,29 @@
   .visual-text-controls select { max-width: calc(50% - 4px); }
   .visual-text-controls .visual-text-remove { margin-left: 0; }
 }
+.visual-workspace { overflow-x: hidden; }
+.visual-workspace .workspace-main,
+.visual-workspace .workspace-grid,
+.visual-workspace .workspace-panel,
+.visual-workspace .workspace-form,
+.visual-workspace .workspace-results,
+.visual-workspace .workspace-history { min-width: 0; max-width: 100%; }
+.visual-grid { grid-template-columns: minmax(0, 1fr); }
+.visual-workspace .workspace-project-name,
+.visual-workspace .workspace-form textarea { box-sizing: border-box; width: 100%; max-width: 100%; }
+.visual-actions button { min-height: 44px; }
+.visual-actions button:disabled { opacity: .55; }
+.visual-voice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+.visual-voice-row .voice-button { flex: 0 0 auto; }
+.visual-voice-row select { box-sizing: border-box; min-height: 44px; max-width: 100%; border: 1px solid #cfcfc8; border-radius: 12px; padding: 0 10px; background: #fff; color: #1c1c1b; font: 16px/1.4 inherit; }
+.visual-voice-row .voice-status { margin: 0; max-width: none; text-align: left; }
+.visual-workspace #visualUploadPanel { margin-top: 8px; }
+.visual-workspace #visualUploadPanel h2 { margin: 16px 0 6px; font-size: 22px; letter-spacing: -.04em; }
+.visual-workspace #visualUploadPanel > p { margin: 0 0 12px; color: #696963; font-size: 13px; line-height: 1.6; }
+.visual-result-actions button { min-height: 44px; border-radius: 12px; padding: 12px 15px; font: 800 14px inherit; }
+@media (max-width: 760px) {
+  .visual-voice-row .voice-button { width: 40px; height: 40px; }
+  .visual-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .visual-actions button { width: 100%; }
+  .visual-workspace .workspace-form textarea { font-size: 16px; }
+}

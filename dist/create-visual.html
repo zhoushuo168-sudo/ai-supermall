@@ -4,29 +4,74 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>AI SuperMall</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=visual-layout-1">
   <link rel="stylesheet" href="workspace.css">
-  <link rel="stylesheet" href="visual-workflow.css?v=text-overlay-1">
+  <link rel="stylesheet" href="visual-workflow.css?v=visual-layout-1">
   <link rel="stylesheet" href="mobile-navigation.css?v=cleanup-1">
   <link rel="stylesheet" href="ios-input-nozoom.css">
 </head>
-<body class="workspace-body" data-workspace="visual">
+<body class="workspace-body visual-workspace" data-workspace="visual">
   <header class="nav">
     <a class="brand" href="index.html"><span class="brand-mark">✦</span><span>AI SuperMall</span></a>
-    <div class="nav-actions"><button class="language-toggle" id="languageToggle">EN</button><a class="account-link" id="projectsLink" href="account.html?view=projects">我的项目</a></div>
+    <div class="nav-actions"><button class="language-toggle" id="languageToggle" type="button">EN</button><a class="account-link" id="projectsLink" href="account.html?view=projects">我的项目</a></div>
   </header>
   <main class="workspace-main">
     <section class="workspace-heading"><div><p class="kicker">AI SUPERMALL CREATE</p><h1 id="workspaceTitle"></h1><p id="workspaceDescription"></p></div><a class="workspace-back" id="homeLink" href="index.html">首页</a></section>
-    <section class="workspace-grid">
-      <section class="workspace-panel" id="visualUploadPanel"><h2 id="uploadLabel"></h2><p id="formatText"></p><div class="drop-zone" id="dropZone"><div><strong id="dropText"></strong><small>JPG · PNG · WEBP</small><span class="upload-control"><label class="upload-button" id="uploadButton" for="fileInput">Choose file</label><input class="file-input" id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple></span></div></div><img class="preview" id="filePreview" alt="Selected image preview"><p class="file-state" id="workspaceStatus" aria-live="polite"></p></section>
-      <section class="workspace-panel" id="visualTaskPanel"><h2>AI SuperMall</h2><p>Tell us the outcome you want. Your task stays in one conversation.</p><form class="workspace-form" id="workspaceForm"><label id="projectNameLabel" for="projectName">Project name</label><input id="projectName" class="workspace-project-name" maxlength="120" autocomplete="off"><label id="taskInputLabel" for="taskInput">Your task</label><textarea id="taskInput" required></textarea><div class="workspace-actions"><button id="workspaceSubmit" type="submit"></button><button class="secondary" id="saveProject" type="button">Save to Project</button></div><p class="workspace-status" id="workspaceGenerationStatus" aria-live="polite"></p></form></section>
-      <section class="workspace-results" id="workspaceResults" hidden><p class="kicker">CONVERSATION</p><h2>AI SuperMall</h2><p>Continue refining your task below.</p><div class="workspace-history" id="workspaceHistory"></div></section>
-      <p class="workspace-note" id="workspaceNote">Selected files remain only in this browser session until a secure media tool is connected.</p>
+    <section class="workspace-grid visual-grid">
+      <section class="workspace-panel" id="visualTaskPanel">
+        <h2 id="visualPanelTitle"></h2>
+        <p id="visualPanelCopy"></p>
+        <form class="workspace-form" id="workspaceForm">
+          <label id="projectNameLabel" for="projectName">项目名称</label>
+          <input id="projectName" class="workspace-project-name" maxlength="120" autocomplete="off">
+          <section id="visualUploadPanel">
+            <h2 id="uploadLabel"></h2>
+            <p id="formatText"></p>
+            <div class="drop-zone" id="dropZone"><div><strong id="dropText"></strong><small>JPG · PNG · WEBP</small><span class="upload-control"><label class="upload-button" id="uploadButton" for="fileInput">Choose file</label><input class="file-input" id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple></span></div></div>
+            <img class="preview" id="filePreview" alt="Selected image preview">
+            <p class="file-state" id="workspaceStatus" aria-live="polite"></p>
+          </section>
+          <label id="taskInputLabel" for="taskInput">你的任务</label>
+          <textarea id="taskInput" required></textarea>
+          <div class="writing-voice-row visual-voice-row">
+            <button type="button" id="visualVoice" class="voice-button" aria-pressed="false">◉</button>
+            <select id="visualVoiceLanguage" aria-label="识别语言">
+              <option value="browser">浏览器语言</option>
+              <option value="zh-CN">中文</option>
+              <option value="en-US">English</option>
+              <option value="de-DE">Deutsch</option>
+              <option value="fr-FR">Français</option>
+              <option value="ja-JP">日本語</option>
+              <option value="es-ES">Español</option>
+              <option value="ko-KR">한국어</option>
+              <option value="pt-BR">Português</option>
+              <option value="it-IT">Italiano</option>
+              <option value="ru-RU">Русский</option>
+              <option value="ar-SA">العربية</option>
+            </select>
+            <p id="visualVoiceStatus" class="voice-status writing-voice-status" hidden></p>
+          </div>
+          <div class="workspace-actions visual-actions">
+            <button id="workspaceSubmit" type="submit"></button>
+            <button class="secondary" id="visualContinue" type="button"></button>
+            <button class="secondary" id="visualDownload" type="button"></button>
+            <button class="secondary" id="saveProject" type="button">保存到项目</button>
+          </div>
+          <p class="workspace-status" id="workspaceGenerationStatus" aria-live="polite"></p>
+        </form>
+      </section>
+      <section class="workspace-results" id="workspaceResults" hidden>
+        <p class="kicker">CONVERSATION</p>
+        <h2 id="visualResultTitle">AI SuperMall</h2>
+        <p id="visualResultCopy">在下方继续修改你的作品。</p>
+        <div class="workspace-history" id="workspaceHistory"></div>
+      </section>
+      <p class="workspace-note" id="workspaceNote"></p>
     </section>
   </main>
   <nav class="mobile-app-nav" aria-label="Mobile navigation"><a href="index.html" data-mobile-destination="home">Home</a><a href="index.html#discover" data-mobile-destination="tools">AI Tools</a><a href="account.html?view=chats" data-mobile-destination="history">History</a><a href="account.html?view=projects" data-mobile-destination="projects">Projects</a><a href="account.html?view=account">Account</a></nav>
   <script src="visual-draft.js?v=1346131"></script>
-  <script src="visual-workflow.js?v=task-clarify-1"></script>
+  <script src="visual-workflow.js?v=visual-layout-1"></script>
   <script src="mobile-navigation.js"></script>
 </body>
 </html>
