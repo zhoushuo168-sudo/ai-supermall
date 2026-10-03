@@ -31,10 +31,10 @@
     saved: 'Saved to your project.',
     generating: 'Generating your video. Please wait…',
     required: 'Describe the video you want.',
-    login: 'Sign in to save this video.',
+    login: 'Please sign in before generating a video.',
     result: 'Preview',
     resultCopy: 'Play it here, then download or save the project.',
-    note: 'Sign in to save this video to your projects.',
+    note: 'Sign in before generating. The finished video is saved to your project.',
     unnamed: 'Untitled video',
     home: 'Home',
     projects: 'My Projects',
@@ -66,10 +66,10 @@
     saved: '已保存到项目。',
     generating: '正在生成视频，请稍候……',
     required: '请先描述你想制作的视频。',
-    login: '请先登录后再保存。',
+    login: '请先登录后再生成视频。',
     result: '预览',
     resultCopy: '可以在这里播放，然后下载或保存项目。',
-    note: '登录后可把这条视频保存到项目。',
+    note: '生成视频前需要登录。完成后会自动保存到你的项目。',
     unnamed: '未命名视频',
     home: '首页',
     projects: '我的项目',
@@ -158,7 +158,7 @@
     try {
       sessionStorage.setItem(draftKey, JSON.stringify({
         language: language(), title: nameInput.value, savedTitle: state.title, task: input.value,
-        messages: state.messages.map(item => ({ question: item.question, answer: item.answer, taskId: item.taskId || '', videoUrl: item.videoUrl || '', video: item.video || null })),
+        messages: state.messages.map(item => ({ question: item.question, answer: item.answer, taskId: item.taskId || '', video: item.video || null })),
         projectId: state.projectId, saveAfterLogin: state.saveAfterLogin
       }));
     } catch {}
@@ -177,7 +177,37 @@
     history.replaceState(null, '', state.projectId ? `create-video.html?project=${encodeURIComponent(state.projectId)}` : 'create-video.html');
     return true;
   }
+  function imageStore(mode, value) {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('ai-supermall-video-drafts', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('drafts');
+      request.onerror = () => reject(request.error || new Error('draft'));
+      request.onsuccess = () => {
+        const db = request.result;
+        const transaction = db.transaction('drafts', mode === 'read' ? 'readonly' : 'readwrite');
+        const action = mode === 'read' ? transaction.objectStore('drafts').get('current') : transaction.objectStore('drafts').put(value, 'current');
+        action.onsuccess = () => resolve(action.result);
+        action.onerror = () => reject(action.error || new Error('draft'));
+        transaction.oncomplete = () => db.close();
+      };
+    });
+  }
+  async function saveImages() {
+    try { await imageStore('write', { images: state.images.slice(0, 4).map(image => ({ type: image.type, data: image.data, name: image.name || '' })) }); } catch {}
+  }
+  async function restoreImages() {
+    try {
+      const saved = await imageStore('read');
+      state.images = (Array.isArray(saved?.images) ? saved.images : []).filter(image => /^data:image\/(jpeg|png|webp);base64,/i.test(String(image?.data || ''))).slice(0, 4);
+    } catch {}
+  }
   async function signedIn() { return (await fetch('/api/account/me')).ok; }
+  async function redirectToLogin() {
+    state.saveAfterLogin = false;
+    persistDraft();
+    await saveImages();
+    location.href = `account.html?mode=login&returnTo=${encodeURIComponent('create-video.html?restoreDraft=1')}`;
+  }
   function projectConversation() {
     const task = input.value.trim() || current()?.question || state.messages[0]?.question || '';
     return [{ type: 'project_meta', workspace: 'video', intent: 'video', task: task.slice(0, 2000) }, ...state.messages.map(item => ({
@@ -192,16 +222,17 @@
     const signed = await api(`/api/member/video-media?path=${encodeURIComponent(saved.video.path)}`);
     latest.videoUrl = signed.url || latest.videoUrl;
   }
-  async function saveProject(manual = false) {
+  async function saveProject(manual = false, quiet = false) {
     if (!typedTitle() && !input.value.trim() && !state.messages.length) { if (manual) setStatus(tr().required); return; }
     if (!(await signedIn())) {
-      state.saveAfterLogin = true;
+      if (manual) state.saveAfterLogin = true;
       persistDraft();
+      await saveImages();
       if (manual) location.href = `account.html?mode=login&returnTo=${encodeURIComponent('create-video.html?restoreDraft=1')}`;
       else setStatus(tr().login);
       return;
     }
-    setStatus(tr().saving);
+    if (!quiet) setStatus(tr().saving);
     const typed = typedTitle();
     if (!state.projectId) {
       const title = typed || state.title || defaultTitle();
@@ -221,17 +252,14 @@
     persistDraft();
     history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
     render();
-    setStatus(tr().saved);
+    if (!quiet) setStatus(tr().saved);
   }
   async function signVideo(item) {
     if (!item?.video?.path) return;
     const signed = await api(`/api/member/video-media?path=${encodeURIComponent(item.video.path)}`);
     if (signed.url) item.videoUrl = signed.url;
   }
-  async function loadProject() {
-    const projectId = query.get('project');
-    if (!projectId) return false;
-    const project = await api(`/api/member/projects?id=${encodeURIComponent(projectId)}`);
+  async function applyProject(project) {
     const meta = (project.conversation || []).find(item => item?.type === 'project_meta');
     if (meta?.workspace && meta.workspace !== 'video') return false;
     state.projectId = project.id;
@@ -239,10 +267,22 @@
     nameInput.value = state.title;
     state.messages = (project.conversation || []).filter(item => item?.type !== 'project_meta' && item?.type !== 'workspace_state').map(item => ({
       question: item.question || '', answer: item.answer || '', taskId: item.video?.taskId || '', video: item.video || null, videoUrl: ''
-    })).filter(item => item.video?.path || item.question);
+    })).filter(item => item.video?.path || item.video?.taskId || item.question);
     await Promise.all(state.messages.map(signVideo));
     input.value = '';
+    history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
     return true;
+  }
+  async function loadProject() {
+    const projectId = query.get('project');
+    if (!projectId) return false;
+    return applyProject(await api(`/api/member/projects?id=${encodeURIComponent(projectId)}`));
+  }
+  async function loadLatestVideoProject() {
+    if (!(await signedIn())) return false;
+    const list = await api('/api/member/projects');
+    const project = (Array.isArray(list) ? list : []).find(item => (item.conversation || []).some(entry => entry?.type === 'project_meta' && entry.workspace === 'video'));
+    return project ? applyProject(project) : false;
   }
   async function downloadVideo() {
     const latest = current();
@@ -271,9 +311,16 @@
         const result = await api(`/api/video/task?id=${encodeURIComponent(taskId)}&language=${language()}`);
         if (result.status === 'SUCCEEDED' && result.videoUrl) {
           message.videoUrl = result.videoUrl;
+          message.video = { ...(message.video || {}), taskId };
           message.answer = language() === 'en' ? 'Video ready.' : '视频已生成。';
           render();
           persistDraft();
+          if (!state.projectId) await saveProject(false, true);
+          if (state.projectId) {
+            await persistVideoFile();
+            await saveProject(false, true);
+          }
+          setStatus(state.projectId ? tr().saved : tr().login);
           return;
         }
         if (result.status === 'FAILED' || result.status === 'UNKNOWN') throw new Error(result.error || tr().timeout);
@@ -284,29 +331,43 @@
     if (state.generating) return;
     const instruction = (regenerate ? current()?.question : input.value).trim();
     if (!instruction) { setStatus(tr().required); input.focus(); return; }
+    if (!(await signedIn())) { await redirectToLogin(); return; }
     state.generating = true;
     applyCopy();
     setStatus(tr().generating);
     let message = current();
+    let accepted = false;
     try {
       const response = await api('/api/video/generate', json({
         prompt: instruction,
         images: state.images.map(image => ({ type: image.type, data: image.data })),
-        language: language()
+        language: language(),
+        projectId: state.projectId || '',
+        title: typedTitle() || state.title || '',
+        replace: Boolean(regenerate)
       }));
       if (!response.taskId) throw new Error(tr().timeout);
-      if (regenerate && message) Object.assign(message, { question: instruction, taskId: response.taskId, videoUrl: '', video: null, answer: '' });
+      accepted = true;
+      if (response.projectId) {
+        state.projectId = response.projectId;
+        history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
+      }
+      const video = { taskId: response.taskId };
+      if (regenerate && message) Object.assign(message, { question: instruction, taskId: response.taskId, videoUrl: '', video, answer: '' });
       else {
-        message = { question: instruction, answer: '', taskId: response.taskId, videoUrl: '', video: null };
+        message = { question: instruction, answer: '', taskId: response.taskId, videoUrl: '', video };
         state.messages.push(message);
         input.value = '';
       }
       if (!state.title && !typedTitle()) state.title = defaultTitle();
       persistDraft();
+      try { await saveProject(false, true); } catch (error) { setStatus(error.message); }
+      setStatus(tr().generating);
       await pollTask(response.taskId, message);
-      if (state.projectId && message.videoUrl) await saveProject(false);
-      else setStatus('');
-    } catch (error) { setStatus(error.message); }
+    } catch (error) {
+      if (!accepted && /sign in|请先登录/i.test(String(error.message || ''))) { await redirectToLogin(); return; }
+      setStatus(error.message);
+    }
     finally { state.generating = false; applyCopy(); }
   }
   function setupVoice() {
@@ -379,6 +440,7 @@
       state.images.push({ type: file.type, data, name: file.name });
     }
     renderUploads();
+    await saveImages();
   }
 
   const storedLanguage = localStorage.getItem('ai-supermall-language');
@@ -404,12 +466,21 @@
   applyCopy();
   (async () => {
     try {
-      if (query.get('project')) await loadProject();
-      else if (query.get('restoreDraft') === '1') restoreDraft();
-      else if (query.get('new') !== '1') restoreDraft();
+      if (query.get('restoreDraft') === '1') {
+        restoreDraft();
+        await restoreImages();
+        await Promise.all(state.messages.map(signVideo));
+        renderUploads();
+      } else if (query.get('project')) await loadProject();
+      else if (!(await loadLatestVideoProject()) && query.get('new') !== '1') {
+        restoreDraft();
+        await restoreImages();
+        await Promise.all(state.messages.map(signVideo));
+        renderUploads();
+      }
       render();
       const pending = current();
-      if (pending?.taskId && !pending.videoUrl && !pending.video?.path) {
+      if (pending?.taskId && !pending.video?.path) {
         state.generating = true;
         applyCopy();
         setStatus(tr().generating);
@@ -420,8 +491,8 @@
       if (state.saveAfterLogin && await signedIn()) await saveProject(true);
     } catch (error) {
       state.generating = false;
-      const projectId = query.get('project');
-      if (/sign in/i.test(String(error.message || '')) && projectId) {
+      const projectId = state.projectId || query.get('project');
+      if (/sign in|请先登录/i.test(String(error.message || '')) && projectId) {
         location.href = `account.html?mode=login&returnTo=${encodeURIComponent(`create-video.html?project=${projectId}`)}`;
         return;
       }

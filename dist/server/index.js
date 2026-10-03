@@ -261,9 +261,19 @@ async function presentationRoute(request, env) {
 const videoModel = "wan3.0-video";
 const videoPathPattern = /^video\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.mp4$/i;
 const safeVideo = value => {
+  const taskId = String(value?.taskId || "").slice(0, 80);
   const path = String(value?.path || "");
-  if (value?.provider !== "oss" || !videoPathPattern.test(path)) return undefined;
-  return { provider: "oss", path, name: String(value?.name || "video.mp4").slice(0, 180), type: "video/mp4", kind: "generated", taskId: String(value?.taskId || "").slice(0, 80) };
+  const stored = value?.provider === "oss" && videoPathPattern.test(path);
+  if (!stored && !/^[A-Za-z0-9-]{8,80}$/.test(taskId)) return undefined;
+  const video = { taskId };
+  if (stored) {
+    video.provider = "oss";
+    video.path = path;
+    video.name = String(value?.name || "video.mp4").slice(0, 180);
+    video.type = "video/mp4";
+    video.kind = "generated";
+  }
+  return video;
 };
 const videoQuotaError = (code, message) => /quota|arrear|billing|overdue|insufficient|free.?quota|allocationquota|prepaid/i.test(`${code} ${message}`);
 const videoModelError = (code, message) => /model.?not.?found|invalidmodel|unsupportedmodel|access.?denied|not.?authorized|does not exist/i.test(`${code} ${message}`);
@@ -275,11 +285,48 @@ function videoFailure(language, code, message) {
   const safeDetail = detail && !/sk-|bearer|api[_-]?key/i.test(detail) ? detail : "";
   return json({ error: safeDetail ? (isEnglish ? `Video generation failed. ${safeDetail}` : `视频生成失败。${safeDetail}`) : (isEnglish ? "Video generation failed. You can try again." : "视频生成失败，可以重新生成。"), status: "FAILED" }, 502);
 }
+async function storeVideoTask(env, token, user, { projectId, title, locale, prompt, taskId, replace }) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return "";
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  const headers = { ...supabaseHeaders(env, token), Prefer: "return=representation" };
+  const meta = { type: "project_meta", workspace: "video", intent: "video", task: String(prompt || "").slice(0, 2000) };
+  const videoMessage = { question: String(prompt || "").slice(0, 8000), answer: "", video: { taskId: String(taskId || "").slice(0, 80) } };
+  const language = locale === "en" ? "en" : "zh";
+  const cleanTitle = String(title || prompt || "Untitled video").trim().slice(0, 120) || "Untitled video";
+  const id = String(projectId || "");
+  if (projectIdPattern.test(id)) {
+    const existing = await fetch(`${base}/rest/v1/projects?select=id,conversation&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
+    const rows = await existing.json().catch(() => []);
+    if (!existing.ok || !rows[0]) return "";
+    const prior = Array.isArray(rows[0].conversation) ? rows[0].conversation.filter(item => item?.type !== "project_meta" && item?.type !== "workspace_state") : [];
+    if (replace && prior.length) prior[prior.length - 1] = videoMessage;
+    else prior.push(videoMessage);
+    const update = { locale: language, conversation: safeProjectConversation([meta, ...prior]), updated_at: new Date().toISOString() };
+    if (String(title || "").trim()) update.title = String(title).trim().slice(0, 120);
+    const updated = await fetch(`${base}/rest/v1/projects?id=eq.${id}&owner_id=eq.${user.id}&select=id`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify(update)
+    });
+    const body = await updated.json().catch(() => []);
+    return updated.ok && body[0]?.id ? body[0].id : "";
+  }
+  const created = await fetch(`${base}/rest/v1/projects`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ owner_id: user.id, title: cleanTitle, locale: language, conversation: safeProjectConversation([meta, videoMessage]) })
+  });
+  const body = await created.json().catch(() => []);
+  const project = Array.isArray(body) ? body[0] : body;
+  return created.ok && project?.id ? project.id : "";
+}
 async function videoCreateRoute(request, env) {
-  const { prompt = "", images = [], language = "zh" } = await request.json();
+  const { prompt = "", images = [], language = "zh", projectId = "", title = "", replace = false } = await request.json();
   const text = String(prompt).trim().slice(0, 5000);
   const isEnglish = language === "en";
   if (!text) return json({ error: isEnglish ? "Describe the video you want." : "请先描述你想制作的视频。" }, 400);
+  const user = await supabaseUser(env, bearerToken(request));
+  if (!user) return json({ error: isEnglish ? "Please sign in to continue." : "请先登录后再生成视频。" }, 401);
   const host = imageHost(env.BAILIAN_WORKSPACE_ID);
   if (!env.BAILIAN_API_KEY || !host) return json({ error: isEnglish ? "Video service is not configured." : "视频服务尚未配置。" }, 503);
   const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -302,7 +349,14 @@ async function videoCreateRoute(request, env) {
     console.error("Video task create failed", { status: response.status, code });
     return videoFailure(language, code, message);
   }
-  return json({ taskId: String(output.task_id), status: String(output.task_status || "PENDING"), model: videoModel });
+  const taskId = String(output.task_id);
+  let savedProjectId = "";
+  try {
+    savedProjectId = await storeVideoTask(env, bearerToken(request), user, { projectId, title, locale: language, prompt: text, taskId, replace: Boolean(replace) });
+  } catch (error) {
+    console.error("Video task project save failed", { message: error instanceof Error ? error.message : "unknown" });
+  }
+  return json({ taskId, status: String(output.task_status || "PENDING"), model: videoModel, projectId: savedProjectId });
 }
 async function videoTaskRoute(request, env, url) {
   const taskId = String(url.searchParams.get("id") || "");
@@ -351,7 +405,7 @@ async function videoMediaRoute(request, env, token, user, url) {
   const projects = await owned.json().catch(() => []);
   if (!owned.ok || !projects[0]) return json({ error: "Project not found." }, 404);
   const remote = await fetch(remoteUrl);
-  if (!remote.ok) return json({ error: "The generated video could not be saved. Please generate it again." }, 502);
+  if (!remote.ok) return json({ error: "The video was created, but saving it failed. Reopen this project to retry the same task." }, 502);
   const bytes = await remote.arrayBuffer();
   if (!bytes.byteLength || bytes.byteLength > 80 * 1024 * 1024) return json({ error: "The generated video is too large to save." }, 400);
   const path = `video/${user.id}/${id}/${crypto.randomUUID()}.mp4`;
