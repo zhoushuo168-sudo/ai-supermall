@@ -1,6 +1,8 @@
 /* Video & shorts. One workspace, standard wan3.0-video, existing projects and OSS. */
 (() => {
   if (typeof document === 'undefined' || document.body?.dataset?.workspace !== 'video') return;
+  const workspace = document.querySelector('.workspace-main');
+  if (workspace) { workspace.hidden = true; workspace.inert = true; }
   const get = id => document.getElementById(id);
   const form = get('workspaceForm');
   const input = get('taskInput');
@@ -466,6 +468,16 @@
   applyCopy();
   (async () => {
     try {
+      let signed = false;
+      try { signed = await signedIn(); } catch { signed = false; }
+      if (!signed) {
+        const projectId = query.get('project');
+        const target = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId || '') ? `create-video.html?project=${projectId}` : 'create-video.html';
+        location.replace(`account.html?mode=login&returnTo=${encodeURIComponent(target)}`);
+        return;
+      }
+      document.documentElement.classList.remove('video-locked');
+      if (workspace) { workspace.hidden = false; workspace.inert = false; }
       if (query.get('restoreDraft') === '1') {
         restoreDraft();
         await restoreImages();
