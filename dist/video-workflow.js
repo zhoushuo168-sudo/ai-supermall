@@ -146,13 +146,35 @@
       const remove = document.createElement('button');
       if (video) { media.controls = true; media.muted = true; media.playsInline = true; media.preload = 'metadata'; figure.className = 'is-video'; }
       media.src = image.preview || image.data || '';
-      if (!video) media.alt = '';
+      if (!video) {
+        media.alt = language() === 'en' ? 'Uploaded photo' : '上传的图片';
+        media.addEventListener('click', () => showUploadPreview(media.src, media.alt));
+      }
       remove.type = 'button';
       remove.textContent = '×';
       remove.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); removeUpload(image).catch(error => setStatus(error.message)); });
       figure.append(media, remove);
       list.append(figure);
     });
+  }
+  function showUploadPreview(url, alt) {
+    if (!url) return;
+    let modal = get('generatedImageModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'generatedImageModal';
+      modal.className = 'generated-image-modal';
+      modal.innerHTML = '<div class="generated-image-modal-backdrop"></div><section class="generated-image-modal-panel" role="dialog" aria-modal="true"><button type="button" class="generated-image-modal-close" aria-label="Close">×</button><img></section>';
+      const close = () => { modal.hidden = true; };
+      modal.querySelector('.generated-image-modal-backdrop').onclick = close;
+      modal.querySelector('button').onclick = close;
+      document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.hidden) close(); });
+      document.body.append(modal);
+    }
+    const image = modal.querySelector('img');
+    image.src = url;
+    image.alt = alt || '';
+    modal.hidden = false;
   }
   async function removeUpload(image) {
     if (String(image.preview || '').startsWith('blob:')) URL.revokeObjectURL(image.preview);

@@ -20,6 +20,13 @@
 .video-uploads figure.is-video { width: 140px; height: 96px; }
 .video-uploads img,
 .video-uploads video { width: 100%; height: 100%; object-fit: cover; display: block; background: #111; }
+.video-uploads img { cursor: pointer; }
+.generated-image-modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; }
+.generated-image-modal[hidden] { display: none; }
+.generated-image-modal-backdrop { position: absolute; inset: 0; background: #111111d0; }
+.generated-image-modal-panel { position: relative; z-index: 1; max-width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.generated-image-modal-panel img { display: block; max-width: 100%; max-height: calc(100vh - 48px); object-fit: contain; border-radius: 12px; background: #fff; }
+.generated-image-modal-close { position: absolute; top: 8px; right: 8px; z-index: 2; width: 44px; height: 44px; border: 0; border-radius: 50%; background: #1c1c1bd6; color: #fff; font-size: 22px; line-height: 44px; padding: 0; }
 .video-uploads button { position: absolute; top: 4px; right: 4px; z-index: 2; width: 22px; height: 22px; border: 0; border-radius: 50%; background: #1c1c1bd6; color: #fff; font-size: 14px; line-height: 22px; padding: 0; }
 .video-player { display: block; width: 100%; max-width: 100%; max-height: 70vh; margin-top: 16px; border-radius: 14px; background: #111; }
 @media (max-width: 760px) {
