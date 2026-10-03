@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>高尔夫挥杆分析 · AI SuperMall</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="workspace.css">
+<link rel="stylesheet" href="mobile-navigation.css?v=cleanup-1">
+<link rel="stylesheet" href="zones.css?v=1">
+<link rel="stylesheet" href="golf.css?v=golf-1">
+<link rel="stylesheet" href="ios-input-nozoom.css">
+<style>html.golf-locked .workspace-main{display:none}</style>
+</head>
+<body class="workspace-body zone-page golf-app">
+<header class="nav">
+<a class="brand" href="index.html"><span class="brand-mark">✦</span><span>AI SuperMall</span></a>
+<nav class="zone-header-nav" aria-label="导航 / Navigation"><a data-zone-zh="首页" data-zone-en="Home" href="index.html#top">首页</a><a data-zone-zh="历史" data-zone-en="History" href="account.html?view=chats">历史</a><a data-zone-zh="项目" data-zone-en="Projects" href="account.html?view=projects">项目</a><a data-zone-zh="账户" data-zone-en="Account" href="account.html?view=account">账户</a></nav>
+<div class="nav-actions"><button class="language-toggle" id="languageToggle" type="button" aria-label="Switch language">EN</button></div>
+</header>
+<main class="workspace-main">
+<section class="workspace-heading"><div><p class="kicker">SPORTS · GOLF</p><h1 data-zone-zh="高尔夫挥杆分析" data-zone-en="Golf Swing Analysis">高尔夫挥杆分析</h1><p data-zone-zh="上传你的挥杆视频，看看哪里可以提高。" data-zone-en="Upload your swing. See what you can improve.">上传你的挥杆视频，看看哪里可以提高。</p></div><a data-zone-zh="返回运动" data-zone-en="Back to Sports" class="workspace-back" href="sports.html">返回运动</a></section>
+<section id="golfSetup" class="workspace-panel golf-card">
+<label class="golf-upload" id="golfDrop" for="golfFile">
+<strong data-zone-zh="上传挥杆视频" data-zone-en="Upload swing video">上传挥杆视频</strong>
+<span data-zone-zh="从相册或文件中选择。支持 MP4、MOV、WEBM，最大 80 MB。" data-zone-en="Choose from your photos or files. MP4, MOV, or WEBM, up to 80 MB.">从相册或文件中选择。支持 MP4、MOV、WEBM，最大 80 MB。</span>
+<input id="golfFile" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm">
+</label>
+<div id="golfPreviewWrap" class="golf-preview" hidden>
+<video id="golfPreview" controls playsinline webkit-playsinline></video>
+<button type="button" id="golfRemove" class="golf-text-button" data-zone-zh="删除视频" data-zone-en="Remove video">删除视频</button>
+</div>
+<fieldset class="golf-field">
+<legend data-zone-zh="球杆" data-zone-en="Club">球杆</legend>
+<div class="golf-choices">
+<label class="golf-choice"><input type="radio" name="club" value="driver"><span data-zone-zh="1号木" data-zone-en="Driver">1号木</span></label>
+<label class="golf-choice"><input type="radio" name="club" value="iron"><span data-zone-zh="铁杆" data-zone-en="Iron">铁杆</span></label>
+</div>
+</fieldset>
+<fieldset class="golf-field">
+<legend data-zone-zh="拍摄角度" data-zone-en="Camera angle">拍摄角度</legend>
+<div class="golf-choices">
+<label class="golf-choice"><input type="radio" name="angle" value="face-on"><span data-zone-zh="正面" data-zone-en="Face On">正面</span></label>
+<label class="golf-choice"><input type="radio" name="angle" value="down-the-line"><span data-zone-zh="侧后方" data-zone-en="Down the Line">侧后方</span></label>
+</div>
+</fieldset>
+<button type="button" id="golfAnalyze" class="golf-primary" data-zone-zh="分析挥杆" data-zone-en="Analyze Swing">分析挥杆</button>
+<p id="golfStatus" class="golf-status" aria-live="polite"></p>
+<section id="golfSaved" class="golf-saved" hidden>
+<h2 data-zone-zh="已保存的挥杆" data-zone-en="Saved swings">已保存的挥杆</h2>
+<div id="golfSavedList"></div>
+</section>
+</section>
+<section id="golfResult" class="workspace-panel golf-card" hidden>
+<h2 data-zone-zh="挥杆分析结果" data-zone-en="Swing Analysis Result">挥杆分析结果</h2>
+<video id="golfResultVideo" class="golf-player" controls playsinline webkit-playsinline></video>
+<dl class="golf-facts">
+<div><dt data-zone-zh="挥杆视频" data-zone-en="Swing video">挥杆视频</dt><dd id="golfResultName"></dd></div>
+<div><dt data-zone-zh="球杆" data-zone-en="Club">球杆</dt><dd id="golfResultClub"></dd></div>
+<div><dt data-zone-zh="拍摄角度" data-zone-en="Camera angle">拍摄角度</dt><dd id="golfResultAngle"></dd></div>
+</dl>
+<ol class="golf-phases">
+<li><span data-zone-zh="准备" data-zone-en="Setup">准备</span></li>
+<li><span data-zone-zh="起杆" data-zone-en="Takeaway">起杆</span></li>
+<li><span data-zone-zh="上杆" data-zone-en="Backswing">上杆</span></li>
+<li><span data-zone-zh="顶点" data-zone-en="Top">顶点</span></li>
+<li><span data-zone-zh="下杆" data-zone-en="Downswing">下杆</span></li>
+<li><span data-zone-zh="击球" data-zone-en="Impact">击球</span></li>
+<li><span data-zone-zh="随挥" data-zone-en="Follow-through">随挥</span></li>
+</ol>
+<p class="golf-pending" data-zone-zh="挥杆分析功能将在下一阶段启用。" data-zone-en="Analysis engine coming next.">挥杆分析功能将在下一阶段启用。</p>
+<button type="button" id="golfAnother" class="golf-primary" data-zone-zh="分析另一支挥杆" data-zone-en="Analyze another swing">分析另一支挥杆</button>
+</section>
+</main>
+<nav class="mobile-app-nav" aria-label="Mobile navigation"><a data-zone-zh="首页" data-zone-en="Home" href="index.html#top">首页</a><a data-zone-zh="AI工具" data-zone-en="AI Tools" href="index.html#discover">AI工具</a><a data-zone-zh="历史" data-zone-en="History" href="account.html?view=chats">历史</a><a data-zone-zh="项目" data-zone-en="Projects" href="account.html?view=projects">项目</a><a data-zone-zh="账户" data-zone-en="Account" href="account.html?view=account">账户</a></nav>
+<script src="zones.js?v=1"></script>
+<script src="golf.js?v=golf-1"></script>
+</body>
+</html>
