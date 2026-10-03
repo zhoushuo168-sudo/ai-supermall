@@ -34,6 +34,14 @@
 .golf-phases li { display: flex; gap: 10px; align-items: center; min-height: 44px; padding: 8px 12px; border-radius: 12px; background: #f7f7f3; }
 .golf-phases li:before { counter-increment: phase; content: counter(phase); flex: 0 0 auto; color: #9f2f24; font-weight: 800; }
 .golf-pending { margin: 0; padding: 12px; border-radius: 12px; background: #fff6e8; color: #6d4e16; line-height: 1.55; overflow-wrap: anywhere; }
+.golf-stage { position: relative; }
+.golf-stage .golf-player { object-fit: contain; }
+.golf-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 14px; pointer-events: none; }
+.golf-pose-button { width: 100%; background: #232321; color: #fff; }
+.golf-pose-note, .golf-pose-legend, .golf-pose-live { margin: 0; color: #4d4d47; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.golf-pose-status { min-height: 22px; margin: 0; color: #232321; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.golf-pose-stats { display: grid; gap: 4px; margin: 0; padding: 12px; border-radius: 12px; background: #f7f7f3; color: #232321; font-size: 14px; line-height: 1.45; }
+.golf-pose-stats strong { font-weight: 800; }
 @media (max-width: 760px) {
   .golf-app .workspace-heading h1 { font-size: clamp(30px, 9vw, 40px); }
   .golf-choices { grid-template-columns: 1fr; }

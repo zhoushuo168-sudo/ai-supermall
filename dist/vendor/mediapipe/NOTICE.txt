@@ -1,0 +1,3 @@
+MediaPipe Tasks Vision 1.0.1 and the Pose Landmarker full float16 model (version 1) are Google software and model files, used here only in the browser.
+They are licensed under the Apache License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
+The usage-log request in this local copy of vision_bundle.mjs is turned off. Swing video stays on this site and in the existing OSS object.

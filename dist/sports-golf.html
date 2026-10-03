@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="workspace.css">
 <link rel="stylesheet" href="mobile-navigation.css?v=cleanup-1">
 <link rel="stylesheet" href="zones.css?v=1">
-<link rel="stylesheet" href="golf.css?v=golf-2">
+<link rel="stylesheet" href="golf.css?v=golf-3">
 <link rel="stylesheet" href="ios-input-nozoom.css">
 <style>html.golf-locked .workspace-main{display:none}</style>
 </head>
@@ -53,7 +53,16 @@
 </section>
 <section id="golfResult" class="workspace-panel golf-card" hidden>
 <h2 data-zone-zh="挥杆分析结果" data-zone-en="Swing Analysis Result">挥杆分析结果</h2>
+<div class="golf-stage">
 <video id="golfResultVideo" class="golf-player" controls playsinline webkit-playsinline></video>
+<canvas id="golfPoseCanvas" hidden></canvas>
+</div>
+<button type="button" id="golfPoseTest" class="golf-text-button golf-pose-button" data-zone-zh="姿态测试" data-zone-en="Pose Test">姿态测试</button>
+<p class="golf-pose-note" data-zone-zh="只画出人体骨架，方便查看关键点是否跟上挥杆。不判断动作好坏。" data-zone-en="Draws the body skeleton so you can see whether the joints follow the swing. It does not judge the swing.">只画出人体骨架，方便查看关键点是否跟上挥杆。不判断动作好坏。</p>
+<p id="golfPoseStatus" class="golf-pose-status" aria-live="polite"></p>
+<p id="golfPoseLegend" class="golf-pose-legend" hidden data-zone-zh="蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。" data-zone-en="Blue is the body's left side. Orange is the body's right side. An open circle means that joint is unstable.">蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。</p>
+<div id="golfPoseStats" class="golf-pose-stats" hidden></div>
+<p id="golfPoseLive" class="golf-pose-live" aria-live="polite"></p>
 <dl class="golf-facts">
 <div><dt data-zone-zh="挥杆视频" data-zone-en="Swing video">挥杆视频</dt><dd id="golfResultName"></dd></div>
 <div><dt data-zone-zh="球杆" data-zone-en="Club">球杆</dt><dd id="golfResultClub"></dd></div>
@@ -75,5 +84,6 @@
 <nav class="mobile-app-nav" aria-label="Mobile navigation"><a data-zone-zh="首页" data-zone-en="Home" href="index.html#top">首页</a><a data-zone-zh="AI工具" data-zone-en="AI Tools" href="index.html#discover">AI工具</a><a data-zone-zh="历史" data-zone-en="History" href="account.html?view=chats">历史</a><a data-zone-zh="项目" data-zone-en="Projects" href="account.html?view=projects">项目</a><a data-zone-zh="账户" data-zone-en="Account" href="account.html?view=account">账户</a></nav>
 <script src="zones.js?v=1"></script>
 <script src="golf.js?v=golf-2"></script>
+<script type="module" src="golf-pose.js?v=pose-1"></script>
 </body>
 </html>

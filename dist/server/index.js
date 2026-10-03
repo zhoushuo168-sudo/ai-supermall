@@ -578,6 +578,17 @@ async function ossMediaRoute(request, env, token, user, url) {
     const provider = String(url.searchParams.get("provider") || ""), path = String(url.searchParams.get("path") || "");
     const ownedPath = ossObjectKeyPattern.test(path) || videoUploadKeyPattern.test(path);
     if (provider !== "oss" || !ownedPath || !path.startsWith(`original/${user.id}/`)) return json({ error: "Media not found." }, 404);
+    if (url.searchParams.get("download") === "1" && videoUploadKeyPattern.test(path)) {
+      try {
+        const remote = await fetch(await ossPresignedUrl(env, "GET", path, 600));
+        if (!remote.ok || !remote.body) return json({ error: "Private media preview is temporarily unavailable." }, 502);
+        const type = path.toLowerCase().endsWith(".webm") ? "video/webm" : path.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4";
+        return new Response(remote.body, { status: 200, headers: { "Content-Type": type, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
+      } catch (error) {
+        console.error("OSS media read failed", { message: error instanceof Error ? error.message : "unknown" });
+        return json({ error: "Private media preview is temporarily unavailable." }, 502);
+      }
+    }
     try { return json({ url: await ossPresignedUrl(env, "GET", path, 3600), provider: "oss", path }); }
     catch (error) { console.error("OSS media signing failed", { message: error instanceof Error ? error.message : "unknown" }); return json({ error: "Private media preview is temporarily unavailable." }, 502); }
   }
