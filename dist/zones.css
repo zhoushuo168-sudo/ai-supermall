@@ -1,0 +1,57 @@
+/* Scoped to the new home shortcuts and application-zone pages. */
+.zone-marquee{overflow-x:auto;scrollbar-width:thin}
+.zone-marquee .zone-marquee-track{display:flex;width:max-content;gap:0;animation:zone-slide 90s linear infinite}
+.zone-marquee .zone-marquee-group{display:flex;flex:none;gap:30px;padding-right:30px;animation:none}
+.zone-marquee a{display:inline-flex;align-items:center;min-height:44px;padding:4px 0;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
+.zone-marquee a:hover{color:var(--accent)}
+.zone-marquee:hover .zone-marquee-track,.zone-marquee:active .zone-marquee-track{animation-play-state:paused}
+.zone-marquee:focus-within .zone-marquee-track{animation-play-state:paused}
+.zone-marquee a:focus-visible,.zone-page a:focus-visible,.zone-page button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@keyframes zone-slide{to{transform:translateX(-50%)}}
+.zone-page .nav{gap:20px;flex-wrap:wrap}
+.zone-page .zone-header-nav{gap:22px}
+.zone-page .language-toggle{border:1px solid var(--line);border-radius:99px;background:#fff;padding:10px 14px;font:600 13px inherit;cursor:pointer}
+.zone-page .workspace-heading h1{line-height:1.15;letter-spacing:-.04em}
+.zone-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.zone-card{display:flex;flex-direction:column;gap:14px;min-height:210px;color:inherit;text-decoration:none}
+.zone-card h2{font-size:23px;line-height:1.35}
+.zone-card p{font-size:14px;line-height:1.75;color:#696963;margin:0}
+.zone-card-link,.zone-soon{align-self:flex-start;margin-top:auto;font-size:12px;font-weight:700}
+.zone-card-link{color:#b23e33}
+.zone-soon{border:1px solid var(--line);border-radius:99px;padding:6px 10px;color:#696963}
+.zone-card[href]:hover{border-color:var(--accent)}
+.zone-note{margin:24px 0 0;font-size:13px;line-height:1.75;color:#696963}
+.zone-page .mobile-app-nav{display:none}
+@media(max-width:900px){.zone-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){
+  .zone-page .workspace-main{width:calc(100% - 28px);padding-top:18px}
+  .zone-page .workspace-heading{grid-template-columns:1fr;gap:18px}
+  .zone-page .workspace-back{justify-self:start}
+  .zone-page .workspace-heading h1{font-size:38px}
+  .zone-page .zone-header-nav{display:none}
+  .zone-grid{grid-template-columns:1fr}
+  .zone-card{min-height:180px}
+}
+@media(prefers-reduced-motion:reduce){.zone-marquee .zone-marquee-track{animation:none}}
+
+/* Home only: share the desktop animation and release touch pause explicitly. */
+@media(max-width:760px){
+  .zone-marquee .zone-marquee-group{width:max-content;white-space:nowrap}
+  .mobile-zone-home .zone-marquee .zone-marquee-track{animation-play-state:running}
+  .mobile-zone-home .zone-marquee.is-touching .zone-marquee-track{animation-play-state:paused}
+  .mobile-zone-home .zone-marquee{scroll-behavior:auto;touch-action:pan-x pan-y}
+  .zone-marquee{
+    padding:12px 0;
+    margin:0;
+    scroll-margin-bottom:var(--zone-nav-clearance,calc(80px + env(safe-area-inset-bottom)));
+  }
+}
+
+/* Only iPhone Safari's English home hero: keep content and type sizes intact. */
+@media(max-width:760px){
+  html[lang="en"] .iphone-safari-home .hero{padding-top:8px;padding-bottom:20px}
+  html[lang="en"] .iphone-safari-home .hero h1{margin-top:6px;margin-bottom:8px}
+  html[lang="en"] .iphone-safari-home .hero-copy{margin-top:0;margin-bottom:8px}
+  html[lang="en"] .iphone-safari-home .quick-label{margin-top:6px;margin-bottom:6px}
+  html[lang="en"] .iphone-safari-home .trust-line{margin-top:8px;row-gap:4px}
+}
