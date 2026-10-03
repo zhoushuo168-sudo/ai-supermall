@@ -16,9 +16,9 @@
     description: 'Turn a sentence, or a photo plus a sentence, into a short video',
     panel: 'Describe the video',
     panelCopy: 'Default length is 5 seconds at 720P. Add photos only if you want them in the video.',
-    upload: 'Photos (optional)',
-    formats: 'JPG, PNG, or WEBP. Up to 4 photos, 8 MB each. Video files are not accepted yet.',
-    drop: 'Drop photos here, or choose files',
+    upload: 'Photos or videos (optional)',
+    formats: 'JPG, PNG, WEBP up to 4 photos, 8 MB each. MP4, MOV, or WEBM up to 2 videos, 80 MB each.',
+    drop: 'Drop photos or videos here, or choose files',
     choose: 'Choose file',
     projectName: 'Project name',
     task: 'Your request',
@@ -31,6 +31,7 @@
     save: 'Save as project',
     saving: 'Saving your project…',
     saved: 'Saved to your project.',
+    savedAs: 'Saved as “{name}”. A project with that name already existed, so this one was not overwritten.',
     generating: 'Generating your video. Please wait…',
     required: 'Describe the video you want.',
     login: 'Please sign in before generating a video.',
@@ -45,16 +46,16 @@
     voiceLanguage: 'Recognition language',
     browserLanguage: 'Browser language',
     listening: 'Listening…',
-    tooBig: 'Use a JPG, PNG, or WEBP under 8 MB.',
+    tooBig: 'Use a JPG, PNG, or WEBP under 8 MB, or an MP4, MOV, or WEBM under 80 MB.',
     timeout: 'Video generation timed out. Wait, then try once more. It was not submitted again automatically.'
   } : {
     title: '视频与短片',
     description: '用一句话，或一张图片加一句话，生成短视频',
     panel: '描述你想制作的视频',
     panelCopy: '默认 5 秒、720P。只有希望画面用到照片时再上传。',
-    upload: '上传图片（可选）',
-    formats: '支持 JPG、PNG、WEBP。最多 4 张，每张 8 MB。暂不接受视频文件。',
-    drop: '把图片拖到这里，或选择文件',
+    upload: '上传图片或视频（可选）',
+    formats: '图片支持 JPG、PNG、WEBP，最多 4 张，每张 8 MB。视频支持 MP4、MOV、WEBM，最多 2 个，每个 80 MB。',
+    drop: '把图片或视频拖到这里，或选择文件',
     choose: '选择文件',
     projectName: '项目名称',
     task: '你的需求',
@@ -67,6 +68,7 @@
     save: '保存为项目',
     saving: '正在保存项目…',
     saved: '已保存到项目。',
+    savedAs: '已保存为「{name}」。同名项目已存在，所以没有覆盖旧项目。',
     generating: '正在生成视频，请稍候……',
     required: '请先描述你想制作的视频。',
     login: '请先登录后再生成视频。',
@@ -81,7 +83,7 @@
     voiceLanguage: '识别语言',
     browserLanguage: '浏览器语言',
     listening: '正在聆听…',
-    tooBig: '请使用 8MB 以内的 JPG、PNG 或 WEBP。',
+    tooBig: '图片请使用 8MB 以内的 JPG、PNG 或 WEBP。视频请使用 80MB 以内的 MP4、MOV 或 WEBM。',
     timeout: '视频生成超时。请稍后再试一次，系统没有自动重新提交。'
   };
   const language = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
@@ -139,16 +141,28 @@
     list.replaceChildren();
     state.images.forEach(image => {
       const figure = document.createElement('figure');
-      const photo = document.createElement('img');
+      const video = /^video\//.test(image.type || '');
+      const media = document.createElement(video ? 'video' : 'img');
       const remove = document.createElement('button');
-      photo.src = image.preview || image.data || '';
-      photo.alt = '';
+      if (video) { media.controls = true; media.muted = true; media.playsInline = true; media.preload = 'metadata'; figure.className = 'is-video'; }
+      media.src = image.preview || image.data || '';
+      if (!video) media.alt = '';
       remove.type = 'button';
       remove.textContent = '×';
-      remove.addEventListener('click', () => { state.images = state.images.filter(item => item !== image); renderUploads(); });
-      figure.append(photo, remove);
+      remove.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); removeUpload(image).catch(error => setStatus(error.message)); });
+      figure.append(media, remove);
       list.append(figure);
     });
+  }
+  async function removeUpload(image) {
+    if (String(image.preview || '').startsWith('blob:')) URL.revokeObjectURL(image.preview);
+    state.images = state.images.filter(item => item !== image);
+    renderUploads();
+    const latest = current();
+    if (latest && !latest.video?.taskId && !latest.video?.path) latest.images = storedImages();
+    else if (latest) latest.images = storedImages();
+    if (!state.projectId) return;
+    await api('/api/member/projects', patch({ id: state.projectId, locale: language(), conversation: projectConversation() }));
   }
   function render() {
     const latest = current();
@@ -226,11 +240,17 @@
       return message;
     })];
   }
-  function draftNeedsOwnProject() {
-    const latest = current();
-    if (!state.projectId || (!latest?.video?.taskId && !latest?.video?.path)) return false;
-    const question = input.value.trim();
-    return (question && question !== (latest.question || '')) || state.images.some(image => !image.path);
+  async function uniqueProjectTitle(requested) {
+    const name = String(requested || '').trim().slice(0, 120);
+    try {
+      const list = await api('/api/member/projects');
+      const used = new Set((Array.isArray(list) ? list : []).map(item => String(item?.title || '').trim()));
+      if (!used.has(name)) return name;
+      const base = name.replace(/（\d+）$/, '');
+      let number = 2;
+      while (used.has(`${base}（${number}）`)) number += 1;
+      return `${base}（${number}）`.slice(0, 120);
+    } catch { return name; }
   }
   function ensureDraftMessage() {
     const question = input.value.trim();
@@ -240,24 +260,26 @@
       state.messages.push({ question, answer: '', taskId: '', video: null, videoUrl: '', images });
       return;
     }
-    if (latest.video?.taskId || latest.video?.path) return;
-    latest.question = question || latest.question;
+    if (!latest.video?.taskId && !latest.video?.path) latest.question = question || latest.question;
     latest.images = images;
   }
   async function uploadDraftImages() {
     for (const image of state.images) {
-      if (image.path || !image.data) continue;
-      const response = await fetch(image.data);
-      const blob = await response.blob();
-      const type = image.type || blob.type || 'image/jpeg';
-      const file = new File([blob], image.name || 'image.jpg', { type });
+      if (image.path) continue;
+      let file = image.file instanceof File ? image.file : null;
+      if (!file && image.data) {
+        const response = await fetch(image.data);
+        const blob = await response.blob();
+        file = new File([blob], image.name || 'upload', { type: image.type || blob.type || 'application/octet-stream' });
+      }
+      if (!file) continue;
       const formData = new FormData();
       formData.append('projectId', state.projectId);
       formData.append('kind', 'reference');
       formData.append('file', file, file.name);
       const saved = await api('/api/member/oss-media', { method: 'POST', body: formData });
-      if (!saved.media?.path) throw new Error(language() === 'en' ? 'The photo could not be saved.' : '图片没有保存成功。');
-      Object.assign(image, saved.media, { preview: image.preview || image.data });
+      if (!saved.media?.path) throw new Error(language() === 'en' ? 'The file could not be saved.' : '文件没有保存成功。');
+      Object.assign(image, saved.media, { preview: image.preview || image.data, file: null });
     }
   }
   async function persistVideoFile() {
@@ -281,9 +303,11 @@
       return;
     }
     if (!quiet) setStatus(tr().saving);
-    if (manual && draftNeedsOwnProject()) { state.projectId = ''; state.messages = []; state.title = ''; }
+    let renamed = false;
     if (!state.projectId) {
-      const title = typed || state.title || defaultTitle();
+      const title = manual ? await uniqueProjectTitle(typed) : (typed || state.title || defaultTitle());
+      renamed = Boolean(manual && title !== typed);
+      if (renamed) nameInput.value = title;
       const created = await api('/api/member/projects', json({ title, locale: language(), conversation: projectConversation() }));
       const project = Array.isArray(created) ? created[0] : created;
       if (!project?.id) throw new Error('Project could not be created.');
@@ -295,15 +319,16 @@
       ensureDraftMessage();
     } else await persistVideoFile();
     const body = { id: state.projectId, locale: language(), conversation: projectConversation() };
-    if (manual) body.title = typed;
+    const finalTitle = typedTitle();
+    if (manual) body.title = finalTitle;
     else if (typed) body.title = typed;
     const updated = await api('/api/member/projects', patch(body));
-    state.title = manual ? typed : (typed || updated.title || state.title);
+    state.title = manual ? finalTitle : (typed || updated.title || state.title);
     state.saveAfterLogin = false;
     persistDraft();
     history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
     render();
-    if (!quiet) setStatus(tr().saved);
+    if (!quiet) setStatus(renamed ? tr().savedAs.replace('{name}', finalTitle) : tr().saved);
   }
   async function signVideo(item) {
     if (!item?.video?.path) return;
@@ -321,14 +346,16 @@
       images: Array.isArray(item.images) ? item.images : []
     })).filter(item => item.video?.path || item.video?.taskId || item.question || item.images.length);
     await Promise.all(state.messages.map(signVideo));
-    input.value = state.messages.at(-1)?.question || meta?.task || '';
-    state.images = (state.messages.at(-1)?.images || []).map(image => ({ ...image }));
+    input.value = meta?.task || state.messages.at(-1)?.question || '';
+    const imageSource = [...state.messages].reverse().find(item => item.images?.length);
+    state.images = (imageSource?.images || []).map(image => ({ ...image }));
     await Promise.all(state.images.map(async image => {
       if (image.provider !== 'oss' || !image.path) return;
       try {
         const signed = await api(`/api/member/oss-media?provider=oss&path=${encodeURIComponent(image.path)}`);
         if (!signed.url) return;
         image.preview = signed.url;
+        if (/^video\//.test(image.type || '')) return;
         const blob = await (await fetch(signed.url)).blob();
         image.data = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.readAsDataURL(blob); });
         image.type = image.type || blob.type;
@@ -342,12 +369,6 @@
     const projectId = query.get('project');
     if (!projectId) return false;
     return applyProject(await api(`/api/member/projects?id=${encodeURIComponent(projectId)}`));
-  }
-  async function loadLatestVideoProject() {
-    if (!(await signedIn())) return false;
-    const list = await api('/api/member/projects');
-    const project = (Array.isArray(list) ? list : []).find(item => (item.conversation || []).some(entry => entry?.type === 'project_meta' && entry.workspace === 'video'));
-    return project ? applyProject(project) : false;
   }
   async function downloadVideo() {
     const latest = current();
@@ -405,7 +426,7 @@
     try {
       const response = await api('/api/video/generate', json({
         prompt: instruction,
-        images: state.images.map(image => ({ type: image.type, data: image.data })),
+        images: state.images.filter(image => /^image\/(jpeg|png|webp)$/.test(image.type || '') && /^data:image\/(jpeg|png|webp);base64,/i.test(image.data || '')).map(image => ({ type: image.type, data: image.data })),
         language: language(),
         projectId: state.projectId || '',
         title: typedTitle() || state.title || '',
@@ -490,11 +511,27 @@
       begin();
     });
   }
+  function uploadKind(file) {
+    const name = String(file?.name || '').toLowerCase();
+    const type = String(file?.type || '').toLowerCase();
+    if (type === 'image/jpeg' || /\.jpe?g$/.test(name)) return { kind: 'image', type: 'image/jpeg' };
+    if (type === 'image/png' || /\.png$/.test(name)) return { kind: 'image', type: 'image/png' };
+    if (type === 'image/webp' || /\.webp$/.test(name)) return { kind: 'image', type: 'image/webp' };
+    if (type === 'video/mp4' || /\.mp4$/.test(name)) return { kind: 'video', type: 'video/mp4' };
+    if (type === 'video/quicktime' || /\.mov$/.test(name)) return { kind: 'video', type: 'video/quicktime' };
+    if (type === 'video/webm' || /\.webm$/.test(name)) return { kind: 'video', type: 'video/webm' };
+    return null;
+  }
   async function addFiles(files) {
-    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
     for (const file of Array.from(files || [])) {
-      if (state.images.length >= 4) break;
-      if (!allowed.has(file.type) || file.size > 8 * 1024 * 1024) { setStatus(tr().tooBig); continue; }
+      const kind = uploadKind(file);
+      const images = state.images.filter(item => !/^video\//.test(item.type || '')).length;
+      const videos = state.images.filter(item => /^video\//.test(item.type || '')).length;
+      if (!kind || (kind.kind === 'image' && (images >= 4 || file.size > 8 * 1024 * 1024)) || (kind.kind === 'video' && (videos >= 2 || file.size > 80 * 1024 * 1024))) { setStatus(tr().tooBig); continue; }
+      if (kind.kind === 'video') {
+        state.images.push({ type: kind.type, name: file.name, file, preview: URL.createObjectURL(file) });
+        continue;
+      }
       const data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ''));
@@ -502,7 +539,7 @@
         reader.readAsDataURL(file);
       });
       if (!/^data:image\/(jpeg|png|webp);base64,/i.test(data) || data.length > 8_000_000) { setStatus(tr().tooBig); continue; }
-      state.images.push({ type: file.type, data, name: file.name });
+      state.images.push({ type: kind.type, data, name: file.name, preview: data });
     }
     renderUploads();
     await saveImages();
@@ -541,18 +578,16 @@
       }
       document.documentElement.classList.remove('video-locked');
       if (workspace) { workspace.hidden = false; workspace.inert = false; }
-      if (query.get('restoreDraft') === '1') {
+      if (query.get('new') === '1' && !query.get('project')) {
+        state.projectId = '';
+        state.messages = [];
+        state.images = [];
+      } else if (query.get('restoreDraft') === '1') {
         restoreDraft();
         await restoreImages();
         await Promise.all(state.messages.map(signVideo));
         renderUploads();
       } else if (query.get('project')) await loadProject();
-      else if (!(await loadLatestVideoProject()) && query.get('new') !== '1') {
-        restoreDraft();
-        await restoreImages();
-        await Promise.all(state.messages.map(signVideo));
-        renderUploads();
-      }
       render();
       const pending = current();
       if (pending?.taskId && !pending.video?.path) {

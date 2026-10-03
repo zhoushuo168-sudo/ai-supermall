@@ -49,6 +49,8 @@ const ossDate = now => {
 };
 const ossEndpoint = env => String(env.ALIBABA_OSS_ENDPOINT || "").replace(/^https?:\/\//i, "").replace(/\/$/, "");
 const ossObjectKeyPattern = /^[a-z]+\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|jpeg|png|webp)$/i;
+const videoUploadTypes = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+const videoUploadKeyPattern = /^original\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:mp4|mov|webm)$/i;
 const ossObjectKeyFor = (userId, projectId, type, kind = "original") => `${kind}/${userId}/${projectId}/${crypto.randomUUID()}.${mediaExtension(type)}`;
 async function ossPresignedUrl(env, method, objectKey, expires = 600, contentType = "") {
   if (!ossConfigured(env)) throw new Error("OSS storage is not configured.");
@@ -79,11 +81,11 @@ const normalizeMediaDescriptor = item => {
   return {
     provider, path,
     name: String(item?.name || "image").slice(0, 180),
-    type: mediaTypes.has(item?.type) ? item.type : "image/png",
+    type: mediaTypes.has(item?.type) || videoUploadTypes.has(item?.type) ? item.type : "image/png",
     kind: item?.kind === "generated" ? "generated" : "reference"
   };
 };
-const validMediaDescriptor = item => item.provider === "oss" ? ossObjectKeyPattern.test(item.path) : /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(item.path);
+const validMediaDescriptor = item => item.provider === "oss" ? (videoUploadTypes.has(item.type) ? videoUploadKeyPattern.test(item.path) : ossObjectKeyPattern.test(item.path)) : /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:jpg|png|webp)$/i.test(item.path);
 const clockFact = (timeZone) => {
   const now = new Date();
   const utc = now.toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -510,7 +512,7 @@ const bytesFromDataUrl = value => {
   for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
   return { bytes, type: match[1].toLowerCase() };
 };
-const mediaExtension = type => type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png";
+const mediaExtension = type => type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : type === "video/mp4" ? "mp4" : type === "video/webm" ? "webm" : type === "video/quicktime" ? "mov" : "png";
 const mediaPathFor = (userId, projectId, type) => `${userId}/${projectId}/${crypto.randomUUID()}.${mediaExtension(type)}`;
 const signedStorageUrl = (base, signed) => /^https:\/\//i.test(signed) ? signed : `${base}/storage/v1${signed.startsWith("/") ? signed : `/${signed}`}`;
 
@@ -571,7 +573,8 @@ async function ossMediaRoute(request, env, token, user, url) {
   const base = env.SUPABASE_URL.replace(/\/$/, "");
   if (request.method === "GET") {
     const provider = String(url.searchParams.get("provider") || ""), path = String(url.searchParams.get("path") || "");
-    if (provider !== "oss" || !ossObjectKeyPattern.test(path) || !path.startsWith(`original/${user.id}/`)) return json({ error: "Media not found." }, 404);
+    const ownedPath = ossObjectKeyPattern.test(path) || videoUploadKeyPattern.test(path);
+    if (provider !== "oss" || !ownedPath || !path.startsWith(`original/${user.id}/`)) return json({ error: "Media not found." }, 404);
     try { return json({ url: await ossPresignedUrl(env, "GET", path, 3600), provider: "oss", path }); }
     catch (error) { console.error("OSS media signing failed", { message: error instanceof Error ? error.message : "unknown" }); return json({ error: "Private media preview is temporarily unavailable." }, 502); }
   }
@@ -600,7 +603,9 @@ async function ossMediaRoute(request, env, token, user, url) {
       nameLen: file instanceof File ? String(file.name || "").length : 0,
       projectIdOk: projectIdPattern.test(id)
     });
-    if (!projectIdPattern.test(id) || !(file instanceof File) || !mediaTypes.has(file.type) || file.size > 20 * 1024 * 1024) return json({ error: "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
+    const uploadedVideo = videoUploadTypes.has(file instanceof File ? file.type : "");
+    const uploadLimit = uploadedVideo ? 80 * 1024 * 1024 : 20 * 1024 * 1024;
+    if (!projectIdPattern.test(id) || !(file instanceof File) || !(mediaTypes.has(file.type) || uploadedVideo) || file.size > uploadLimit) return json({ error: uploadedVideo ? "Please choose an MP4, MOV, or WEBM video under 80 MB." : "Please choose a JPG, PNG, or WEBP image under 20 MB." }, 400);
     const owned = await fetch(`${base}/rest/v1/projects?select=id&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
     const projects = await owned.json().catch(() => []);
     if (!owned.ok || !projects[0]) return json({ error: "Project not found." }, 404);
