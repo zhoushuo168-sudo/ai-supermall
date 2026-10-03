@@ -750,6 +750,16 @@ async function accountRoute(request, env, url) {
       if (!body[0]) return json({ error: "Project not found." }, 404);
       return json(body[0], response.status);
     }
+    if (request.method === "DELETE") {
+      const projectId = String(url.searchParams.get("id") || "").trim();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
+      const query = new URLSearchParams({ id: `eq.${projectId}`, owner_id: `eq.${user.id}` });
+      const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { method: "DELETE", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" } });
+      const body = await response.json().catch(() => []);
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "project deleting"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+      if (!Array.isArray(body) || !body[0]) return json({ error: "Project not found." }, 404);
+      return json({ id: body[0].id });
+    }
     return json({ error: "Method not allowed" }, 405);
   }
   if (path === "/api/member/conversations") {
@@ -793,6 +803,16 @@ async function accountRoute(request, env, url) {
       if (!response.ok) return json({ error: supabaseError(body, response.status, "conversation updating"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
       if (!body[0]) return json({ error: "Conversation not found." }, 404);
       return json(body[0], response.status);
+    }
+    if (request.method === "DELETE") {
+      const conversationId = String(url.searchParams.get("id") || "").trim();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return json({ error: "Invalid conversation identifier." }, 400);
+      const query = new URLSearchParams({ id: `eq.${conversationId}`, owner_id: `eq.${user.id}` });
+      const response = await fetch(`${base}/rest/v1/conversations?${query.toString()}`, { method: "DELETE", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" } });
+      const body = await response.json().catch(() => []);
+      if (!response.ok) return json({ error: supabaseError(body, response.status, "conversation deleting"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+      if (!Array.isArray(body) || !body[0]) return json({ error: "Conversation not found." }, 404);
+      return json({ id: body[0].id });
     }
     return json({ error: "Method not allowed" }, 405);
   }

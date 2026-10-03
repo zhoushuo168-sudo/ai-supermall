@@ -32,13 +32,16 @@
     saving: 'Saving your project…',
     saved: 'Saved to your project.',
     savedAs: 'Saved as “{name}”. A project with that name already existed, so this one was not overwritten.',
-    generating: 'Generating your video. Please wait…',
+    submitting: 'Submitting…',
+    generating: 'Generating the video…',
+    savingVideo: 'Saving the video…',
+    done: 'Video ready',
     required: 'Describe the video you want.',
     login: 'Please sign in before generating a video.',
     titleRequired: 'Enter a project name before saving.',
     result: 'Preview',
     resultCopy: 'Play it here, then download or save the project.',
-    note: 'Sign in before generating. The finished video is saved to your project.',
+    note: '',
     unnamed: 'Untitled video',
     home: 'Home',
     projects: 'My Projects',
@@ -69,13 +72,16 @@
     saving: '正在保存项目…',
     saved: '已保存到项目。',
     savedAs: '已保存为「{name}」。同名项目已存在，所以没有覆盖旧项目。',
-    generating: '正在生成视频，请稍候……',
+    submitting: '正在提交…',
+    generating: '正在生成视频…',
+    savingVideo: '正在保存视频…',
+    done: '生成完成',
     required: '请先描述你想制作的视频。',
     login: '请先登录后再生成视频。',
     titleRequired: '请先填写项目名称，再保存项目。',
     result: '预览',
     resultCopy: '可以在这里播放，然后下载或保存项目。',
-    note: '生成视频前需要登录。完成后会自动保存到你的项目。',
+    note: '',
     unnamed: '未命名视频',
     home: '首页',
     projects: '我的项目',
@@ -95,7 +101,7 @@
   };
   const json = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const patch = body => ({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const setStatus = message => { get('workspaceGenerationStatus').textContent = message || ''; };
+  const setStatus = message => { const node = get('workspaceGenerationStatus'); node.textContent = message || ''; if (message && window.matchMedia('(max-width: 760px)').matches) node.scrollIntoView({ block: 'center', inline: 'nearest' }); };
   const typedTitle = () => nameInput.value.trim().slice(0, 120);
   const current = () => state.messages.at(-1) || null;
   const defaultTitle = () => String(state.messages[0]?.question || input.value || '').replace(/\s+/g, ' ').trim().slice(0, 40) || tr().unnamed;
@@ -126,7 +132,7 @@
     get('homeLink').textContent = text.home;
     get('projectsLink').textContent = text.projects;
     get('languageToggle').textContent = language() === 'en' ? '中文' : 'EN';
-    get('workspaceNote').textContent = text.note;
+    get('workspaceNote').textContent = text.note; get('workspaceNote').hidden = !text.note;
     get('videoVoice').setAttribute('aria-label', text.voice);
     get('videoVoice').title = text.voice;
     get('videoVoiceLanguage').setAttribute('aria-label', text.voiceLanguage);
@@ -423,12 +429,13 @@
           message.answer = language() === 'en' ? 'Video ready.' : '视频已生成。';
           render();
           persistDraft();
+          setStatus(tr().savingVideo);
           if (!state.projectId) await saveProject(false, true);
           if (state.projectId) {
             await persistVideoFile();
             await saveProject(false, true);
           }
-          setStatus(state.projectId ? tr().saved : tr().login);
+          setStatus(tr().done);
           return;
         }
         if (result.status === 'FAILED' || result.status === 'UNKNOWN') throw new Error(result.error || tr().timeout);
@@ -439,13 +446,13 @@
     if (state.generating) return;
     const instruction = (regenerate ? current()?.question : input.value).trim();
     if (!instruction) { setStatus(tr().required); input.focus(); return; }
-    if (!(await signedIn())) { await redirectToLogin(); return; }
     state.generating = true;
     applyCopy();
-    setStatus(tr().generating);
+    setStatus(tr().submitting);
     let message = current();
     let accepted = false;
     try {
+      if (!(await signedIn())) { await redirectToLogin(); return; }
       const response = await api('/api/video/generate', json({
         prompt: instruction,
         images: state.images.filter(image => /^image\/(jpeg|png|webp)$/.test(image.type || '') && /^data:image\/(jpeg|png|webp);base64,/i.test(image.data || '')).map(image => ({ type: image.type, data: image.data })),
@@ -465,7 +472,6 @@
       else {
         message = { question: instruction, answer: '', taskId: response.taskId, videoUrl: '', video };
         state.messages.push(message);
-        input.value = '';
       }
       if (!state.title && !typedTitle()) state.title = defaultTitle();
       persistDraft();

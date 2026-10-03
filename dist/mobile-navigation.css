@@ -3,5 +3,6 @@
   .mobile-app-nav a{display:grid;place-items:center;min-width:0;min-height:38px;padding:2px;color:#4f4f49;text-align:center;text-decoration:none;font-size:10px;font-weight:700;line-height:1.15;overflow-wrap:anywhere}
   .mobile-app-nav a.active{color:#ef594b}
   .mobile-app-nav a.active:after{content:'';display:block;width:4px;height:4px;margin-top:3px;border-radius:50%;background:currentColor}
-  body{padding-bottom:calc(82px + env(safe-area-inset-bottom))}
+  body{padding-bottom:calc(108px + env(safe-area-inset-bottom))}
+  .workspace-status,.account-status{scroll-margin-bottom:calc(120px + env(safe-area-inset-bottom))}
 }
