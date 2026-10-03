@@ -1,3 +1,5 @@
+.golf-app .nav-actions { display: flex; align-items: center; gap: 6px; }
+.golf-app .golf-nav-link { border: 0; background: transparent; color: inherit; padding: 8px 4px; font: 700 13px/1.2 inherit; text-decoration: none; cursor: pointer; }
 .golf-app .workspace-heading h1 { max-width: 16em; overflow-wrap: anywhere; line-height: 1.12; }
 .golf-app .workspace-heading p { max-width: 34em; overflow-wrap: anywhere; }
 .golf-card { display: grid; gap: 16px; }

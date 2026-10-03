@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="responsive-repair.css">
 <link rel="stylesheet" href="mobile-navigation.css?v=cleanup-1">
 <link rel="stylesheet" href="ios-input-nozoom.css">
+<link rel="stylesheet" href="zones.css?v=1">
 </head>
 <body>
 <div class="aurora aurora-one">
@@ -84,11 +85,6 @@
 <button data-query="帮我的奶茶店做推广" data-i18n="quickImage" data-i18n-query="quickImage">帮我的奶茶店做推广</button>
 <button data-query="帮我做一份工作汇报" data-i18n="quickSlides" data-i18n-query="quickSlides">帮我做一份工作汇报</button>
 </p>
-<a class="studio-launch" href="marketing-studio.html">
-<span class="studio-launch-icon">✦</span>
-<span><b data-i18n="studioLaunchTitle">AI 营销工作台</b><small data-i18n="studioLaunchCopy">输入你的业务，立即获得专属营销方案</small></span>
-<i>→</i>
-</a>
 <div class="trust-line" aria-label="AI SuperMall promises">
 <span data-i18n="trustFree">免费开始</span>
 <span>•</span>
@@ -103,24 +99,9 @@
 <span class="float-chip chip-c">↗ Work</span>
 </div>
 </section>
-<section class="marquee">
-<div>
-<span>DISCOVER</span>
-<b>✦</b>
-<span>CREATE</span>
-<b>✦</b>
-<span>LEARN</span>
-<b>✦</b>
-<span>CONNECT</span>
-<b>✦</b>
-<span>DISCOVER</span>
-<b>✦</b>
-<span>CREATE</span>
-<b>✦</b>
-<span>LEARN</span>
-<b>✦</b>
-</div>
-</section>
+<nav class="marquee zone-marquee" aria-label="专区 / Zones">
+<div class="zone-marquee-track"><div class="zone-marquee-group"><a data-zone-zh="视觉与海报" data-zone-en="Visual &amp; Poster" href="create-visual.html?new=1">视觉与海报</a><b aria-hidden="true">✦</b><a data-zone-zh="视频与短片" data-zone-en="Video &amp; Shorts" href="create-video.html?new=1">视频与短片</a><b aria-hidden="true">✦</b><a data-zone-zh="写作与方案" data-zone-en="Writing &amp; Planning" href="create-writing.html?new=1">写作与方案</a><b aria-hidden="true">✦</b><a data-zone-zh="演示与汇报" data-zone-en="Presentation &amp; Reports" href="create-presentation.html?new=1">演示与汇报</a><b aria-hidden="true">✦</b><a data-zone-zh="运动" data-zone-en="Sports" href="sports.html">运动</a><b aria-hidden="true">✦</b><a data-zone-zh="健康" data-zone-en="Health" href="health.html">健康</a><b aria-hidden="true">✦</b><a data-zone-zh="生活" data-zone-en="Life" href="life.html">生活</a><b aria-hidden="true">✦</b><a data-zone-zh="美食与厨艺" data-zone-en="Food &amp; Cooking" href="food-cooking.html">美食与厨艺</a><b aria-hidden="true">✦</b><a data-zone-zh="学习与成长" data-zone-en="Learning &amp; Growth" href="learning-growth.html">学习与成长</a><b aria-hidden="true">✦</b><a data-zone-zh="旅行" data-zone-en="Travel" href="travel.html">旅行</a><b aria-hidden="true">✦</b><a data-zone-zh="小企业" data-zone-en="Small Business" href="small-business.html">小企业</a><b aria-hidden="true">✦</b></div><div class="zone-marquee-group" aria-hidden="true"><a data-zone-zh="视觉与海报" data-zone-en="Visual &amp; Poster" href="create-visual.html?new=1" tabindex="-1">视觉与海报</a><b aria-hidden="true">✦</b><a data-zone-zh="视频与短片" data-zone-en="Video &amp; Shorts" href="create-video.html?new=1" tabindex="-1">视频与短片</a><b aria-hidden="true">✦</b><a data-zone-zh="写作与方案" data-zone-en="Writing &amp; Planning" href="create-writing.html?new=1" tabindex="-1">写作与方案</a><b aria-hidden="true">✦</b><a data-zone-zh="演示与汇报" data-zone-en="Presentation &amp; Reports" href="create-presentation.html?new=1" tabindex="-1">演示与汇报</a><b aria-hidden="true">✦</b><a data-zone-zh="运动" data-zone-en="Sports" href="sports.html" tabindex="-1">运动</a><b aria-hidden="true">✦</b><a data-zone-zh="健康" data-zone-en="Health" href="health.html" tabindex="-1">健康</a><b aria-hidden="true">✦</b><a data-zone-zh="生活" data-zone-en="Life" href="life.html" tabindex="-1">生活</a><b aria-hidden="true">✦</b><a data-zone-zh="美食与厨艺" data-zone-en="Food &amp; Cooking" href="food-cooking.html" tabindex="-1">美食与厨艺</a><b aria-hidden="true">✦</b><a data-zone-zh="学习与成长" data-zone-en="Learning &amp; Growth" href="learning-growth.html" tabindex="-1">学习与成长</a><b aria-hidden="true">✦</b><a data-zone-zh="旅行" data-zone-en="Travel" href="travel.html" tabindex="-1">旅行</a><b aria-hidden="true">✦</b><a data-zone-zh="小企业" data-zone-en="Small Business" href="small-business.html" tabindex="-1">小企业</a><b aria-hidden="true">✦</b></div></div>
+</nav>
 <section id="discover" class="section discover">
 <div class="section-heading">
 <div>
@@ -322,11 +303,12 @@
 </footer>
 <div class="toast" id="toast">
 </div>
-<script src="script.js?v=video-3">
+<script src="script.js?v=golf-2">
 </script>
 <script src="voice-merge.js"></script>
 <script src="input-experience.js"></script>
 <script src="home-input-scroll.js"></script>
 <script src="mobile-navigation.js"></script>
+<script src="zones.js?v=1"></script>
 </body>
 </html>

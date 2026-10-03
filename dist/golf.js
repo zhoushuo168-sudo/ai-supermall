@@ -42,24 +42,26 @@
     setStatus('');
   };
   const chosen = name => document.querySelector(`input[name="${name}"]:checked`)?.value || '';
-  const sessionRecord = (club, angle) => ({
+  const sessionRecord = (club, angle, media) => ({
     v: 1,
     kind: 'golf-session',
     sport: 'golf',
     club,
     angle,
     referenceKey: `${club}:${angle}`,
+    video: media?.path ? { provider: media.provider || 'oss', path: media.path, name: media.name || '', type: media.type || '' } : null,
     phases: PHASES,
     analysis: null,
     comparisons: null
   });
   const readRecord = project => {
     const items = Array.isArray(project?.conversation) ? project.conversation : [];
+    const storedVideo = items.flatMap(item => item.images || []).find(image => image?.path && (String(image.type || '').startsWith('video/') || /\.(mp4|mov|webm)$/i.test(image.path)));
     const candidates = [items.find(item => item?.type === 'project_meta')?.task, ...items.map(item => item?.question)];
     for (const value of candidates) {
       try {
         const record = JSON.parse(value || '');
-        if (record?.kind === 'golf-session' && CLUBS.includes(record.club) && ANGLES.includes(record.angle) && REFERENCE_KEYS.includes(record.referenceKey)) return { record, media: items.flatMap(item => item.images || []).find(image => String(image?.type || '').startsWith('video/')) || null };
+        if (record?.kind === 'golf-session' && CLUBS.includes(record.club) && ANGLES.includes(record.angle) && REFERENCE_KEYS.includes(record.referenceKey)) return { record, media: record.video?.path ? record.video : storedVideo || null };
       } catch {}
     }
     return null;
@@ -73,7 +75,7 @@
   async function saveSwing() {
     const club = chosen('club');
     const angle = chosen('angle');
-    const record = sessionRecord(club, angle);
+    const record = sessionRecord(club, angle, null);
     const language = document.documentElement.lang === 'en' ? 'en' : 'zh';
     const title = `Golf · ${labels.en[club]} · ${labels.en[angle]}`.slice(0, 120);
     const created = await api('/api/member/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, locale: language, conversation: [{ type: 'project_meta', workspace: 'golf', intent: 'golf', task: JSON.stringify(record) }, { question: JSON.stringify(record), answer: '' }] }) });
@@ -87,7 +89,8 @@
     const uploaded = await api('/api/member/oss-media', { method: 'POST', body: form });
     const media = uploaded.media;
     if (!media?.path) throw new Error(text().failed);
-    await api('/api/member/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: project.id, locale: language, conversation: [{ type: 'project_meta', workspace: 'golf', intent: 'golf', task: JSON.stringify(record) }, { question: JSON.stringify(record), answer: '', images: [media] }] }) });
+    const saved = sessionRecord(club, angle, media);
+    await api('/api/member/projects', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: project.id, locale: language, conversation: [{ type: 'project_meta', workspace: 'golf', intent: 'golf', task: JSON.stringify(saved) }, { question: `${labels.en[club]} · ${labels.en[angle]}`, answer: '', images: [media] }] }) });
     return project.id;
   }
   async function showResult(project) {
@@ -125,6 +128,13 @@
       }));
     } catch { box.hidden = true; }
   }
+  $('golfSignOut').addEventListener('click', async () => {
+    try { await fetch('/api/account/logout', { method: 'POST' }); } catch {}
+    localStorage.removeItem('ai-supermall-visual-draft-pending');
+    ['ai-supermall-workspace-handoff', 'ai-supermall-post-login-return', 'ai-supermall-writing-draft', 'ai-supermall-presentation-draft', 'ai-supermall-video-draft'].forEach(key => sessionStorage.removeItem(key));
+    try { indexedDB.deleteDatabase('ai-supermall-visual-drafts'); indexedDB.deleteDatabase('ai-supermall-video-drafts'); } catch {}
+    location.href = 'account.html?mode=login';
+  });
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     if (!file) return;
