@@ -34,6 +34,7 @@
     generating: 'Generating your video. Please wait…',
     required: 'Describe the video you want.',
     login: 'Please sign in before generating a video.',
+    titleRequired: 'Enter a project name before saving.',
     result: 'Preview',
     resultCopy: 'Play it here, then download or save the project.',
     note: 'Sign in before generating. The finished video is saved to your project.',
@@ -69,6 +70,7 @@
     generating: '正在生成视频，请稍候……',
     required: '请先描述你想制作的视频。',
     login: '请先登录后再生成视频。',
+    titleRequired: '请先填写项目名称，再保存项目。',
     result: '预览',
     resultCopy: '可以在这里播放，然后下载或保存项目。',
     note: '生成视频前需要登录。完成后会自动保存到你的项目。',
@@ -139,7 +141,7 @@
       const figure = document.createElement('figure');
       const photo = document.createElement('img');
       const remove = document.createElement('button');
-      photo.src = image.data;
+      photo.src = image.preview || image.data || '';
       photo.alt = '';
       remove.type = 'button';
       remove.textContent = '×';
@@ -210,11 +212,53 @@
     await saveImages();
     location.href = `account.html?mode=login&returnTo=${encodeURIComponent('create-video.html?restoreDraft=1')}`;
   }
+  function storedImages() {
+    return state.images.filter(image => image?.provider === 'oss' && image.path).map(image => ({
+      provider: 'oss', path: image.path, name: image.name || 'image', type: image.type || 'image/jpeg', kind: 'reference'
+    }));
+  }
   function projectConversation() {
     const task = input.value.trim() || current()?.question || state.messages[0]?.question || '';
-    return [{ type: 'project_meta', workspace: 'video', intent: 'video', task: task.slice(0, 2000) }, ...state.messages.map(item => ({
-      question: item.question || '', answer: item.answer || '', workspace: 'video', video: item.video || null
-    }))];
+    return [{ type: 'project_meta', workspace: 'video', intent: 'video', task: task.slice(0, 2000) }, ...state.messages.map(item => {
+      const message = { question: item.question || '', answer: item.answer || '', workspace: 'video', video: item.video || null };
+      const images = Array.isArray(item.images) ? item.images.filter(image => image?.provider === 'oss' && image.path) : [];
+      if (images.length) message.images = images;
+      return message;
+    })];
+  }
+  function draftNeedsOwnProject() {
+    const latest = current();
+    if (!state.projectId || (!latest?.video?.taskId && !latest?.video?.path)) return false;
+    const question = input.value.trim();
+    return (question && question !== (latest.question || '')) || state.images.some(image => !image.path);
+  }
+  function ensureDraftMessage() {
+    const question = input.value.trim();
+    const images = storedImages();
+    const latest = current();
+    if (!latest) {
+      state.messages.push({ question, answer: '', taskId: '', video: null, videoUrl: '', images });
+      return;
+    }
+    if (latest.video?.taskId || latest.video?.path) return;
+    latest.question = question || latest.question;
+    latest.images = images;
+  }
+  async function uploadDraftImages() {
+    for (const image of state.images) {
+      if (image.path || !image.data) continue;
+      const response = await fetch(image.data);
+      const blob = await response.blob();
+      const type = image.type || blob.type || 'image/jpeg';
+      const file = new File([blob], image.name || 'image.jpg', { type });
+      const formData = new FormData();
+      formData.append('projectId', state.projectId);
+      formData.append('kind', 'reference');
+      formData.append('file', file, file.name);
+      const saved = await api('/api/member/oss-media', { method: 'POST', body: formData });
+      if (!saved.media?.path) throw new Error(language() === 'en' ? 'The photo could not be saved.' : '图片没有保存成功。');
+      Object.assign(image, saved.media, { preview: image.preview || image.data });
+    }
   }
   async function persistVideoFile() {
     const latest = current();
@@ -225,7 +269,9 @@
     latest.videoUrl = signed.url || latest.videoUrl;
   }
   async function saveProject(manual = false, quiet = false) {
-    if (!typedTitle() && !input.value.trim() && !state.messages.length) { if (manual) setStatus(tr().required); return; }
+    const typed = typedTitle();
+    if (manual && !typed) { state.saveAfterLogin = false; setStatus(tr().titleRequired); nameInput.focus(); return; }
+    if (!typed && !input.value.trim() && !state.messages.length && !state.images.length) { if (manual) setStatus(tr().required); return; }
     if (!(await signedIn())) {
       if (manual) state.saveAfterLogin = true;
       persistDraft();
@@ -235,7 +281,7 @@
       return;
     }
     if (!quiet) setStatus(tr().saving);
-    const typed = typedTitle();
+    if (manual && draftNeedsOwnProject()) { state.projectId = ''; state.messages = []; state.title = ''; }
     if (!state.projectId) {
       const title = typed || state.title || defaultTitle();
       const created = await api('/api/member/projects', json({ title, locale: language(), conversation: projectConversation() }));
@@ -243,13 +289,16 @@
       if (!project?.id) throw new Error('Project could not be created.');
       state.projectId = project.id;
       state.title = project.title || title;
-      if (!nameInput.value.trim()) nameInput.value = state.title;
     }
-    await persistVideoFile();
+    if (manual) {
+      await uploadDraftImages();
+      ensureDraftMessage();
+    } else await persistVideoFile();
     const body = { id: state.projectId, locale: language(), conversation: projectConversation() };
-    if (typed) body.title = typed;
+    if (manual) body.title = typed;
+    else if (typed) body.title = typed;
     const updated = await api('/api/member/projects', patch(body));
-    state.title = typed || updated.title || state.title;
+    state.title = manual ? typed : (typed || updated.title || state.title);
     state.saveAfterLogin = false;
     persistDraft();
     history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
@@ -268,10 +317,24 @@
     state.title = project.title || '';
     nameInput.value = state.title;
     state.messages = (project.conversation || []).filter(item => item?.type !== 'project_meta' && item?.type !== 'workspace_state').map(item => ({
-      question: item.question || '', answer: item.answer || '', taskId: item.video?.taskId || '', video: item.video || null, videoUrl: ''
-    })).filter(item => item.video?.path || item.video?.taskId || item.question);
+      question: item.question || '', answer: item.answer || '', taskId: item.video?.taskId || '', video: item.video || null, videoUrl: '',
+      images: Array.isArray(item.images) ? item.images : []
+    })).filter(item => item.video?.path || item.video?.taskId || item.question || item.images.length);
     await Promise.all(state.messages.map(signVideo));
-    input.value = '';
+    input.value = state.messages.at(-1)?.question || meta?.task || '';
+    state.images = (state.messages.at(-1)?.images || []).map(image => ({ ...image }));
+    await Promise.all(state.images.map(async image => {
+      if (image.provider !== 'oss' || !image.path) return;
+      try {
+        const signed = await api(`/api/member/oss-media?provider=oss&path=${encodeURIComponent(image.path)}`);
+        if (!signed.url) return;
+        image.preview = signed.url;
+        const blob = await (await fetch(signed.url)).blob();
+        image.data = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.readAsDataURL(blob); });
+        image.type = image.type || blob.type;
+      } catch {}
+    }));
+    renderUploads();
     history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
     return true;
   }
