@@ -300,6 +300,8 @@ async function storeVideoTask(env, token, user, { projectId, title, locale, prom
     const existing = await fetch(`${base}/rest/v1/projects?select=id,conversation&id=eq.${id}&owner_id=eq.${user.id}`, { headers: supabaseHeaders(env, token) });
     const rows = await existing.json().catch(() => []);
     if (!existing.ok || !rows[0]) return "";
+    const oldMeta = Array.isArray(rows[0].conversation) ? rows[0].conversation.find(item => item?.type === "project_meta") : null;
+    if (oldMeta?.historyHidden === true) meta.historyHidden = true;
     const prior = Array.isArray(rows[0].conversation) ? rows[0].conversation.filter(item => item?.type !== "project_meta" && item?.type !== "workspace_state") : [];
     if (replace && prior.length) prior[prior.length - 1] = videoMessage;
     else prior.push(videoMessage);
@@ -479,7 +481,7 @@ const safePresentation = value => {
   if (!slides.length) return undefined;
   return { title: String(value?.title || "").trim().slice(0, 180), slides };
 };
-const safeProjectConversation = items => {
+const safeProjectConversation = (items, options = {}) => {
   if (!Array.isArray(items)) return [];
   const state = items.find(item => item?.type === "workspace_state" && item?.workspace === "visual");
   const suppliedMeta = items.find(item => item?.type === "project_meta");
@@ -490,6 +492,7 @@ const safeProjectConversation = items => {
     intent: ["visual", "video", "writing", "presentation", "knowledge"].includes(suppliedMeta?.intent) ? suppliedMeta.intent : inferredWorkspace,
     task: String(suppliedMeta?.task || state?.task || "").slice(0, 2000)
   };
+  if (suppliedMeta?.historyHidden === true || options.historyHidden === true) meta.historyHidden = true;
   const messages = items.filter(item => item?.type !== "workspace_state" && item?.type !== "project_meta").slice(-30).map(item => {
     const message = {
       question: String(item?.question || "").slice(0, 8000), answer: String(item?.answer || "").slice(0, 12000), images: safeProjectMedia(item?.images),
@@ -736,10 +739,31 @@ async function accountRoute(request, env, url) {
       return json(body, response.status);
     }
     if (request.method === "PATCH") {
-      const { id, title, locale = "zh", conversation } = await request.json();
+      const payload = await request.json();
+      const { id, title, locale = "zh", conversation } = payload;
       const projectId = String(id || "").trim();
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(projectId)) return json({ error: "Invalid project identifier." }, 400);
-      const safeConversation = Array.isArray(conversation) ? safeProjectConversation(conversation) : undefined;
+      const hideOnly = payload.historyHidden === true && !Array.isArray(conversation);
+      let storedConversation = null;
+      if (hideOnly || Array.isArray(conversation)) {
+        const priorResponse = await fetch(`${base}/rest/v1/projects?id=eq.${projectId}&owner_id=eq.${user.id}&select=conversation`, { headers: supabaseHeaders(env, token) });
+        const priorBody = await priorResponse.json().catch(() => []);
+        if (!priorResponse.ok) return json({ error: supabaseError(priorBody, priorResponse.status, "project updating"), providerCode: String(priorBody?.code || priorBody?.error_code || priorResponse.status) }, priorResponse.status);
+        if (!priorBody[0]) return json({ error: "Project not found." }, 404);
+        storedConversation = Array.isArray(priorBody[0].conversation) ? priorBody[0].conversation : [];
+      }
+      if (hideOnly) {
+        const next = storedConversation.map(item => item?.type === "project_meta" ? { ...item, historyHidden: true } : item);
+        if (!next.some(item => item?.type === "project_meta")) next.unshift({ type: "project_meta", workspace: "knowledge", intent: "knowledge", task: "", historyHidden: true });
+        const query = new URLSearchParams({ id: `eq.${projectId}`, owner_id: `eq.${user.id}`, select: "id,title,locale,conversation,updated_at" });
+        const response = await fetch(`${base}/rest/v1/projects?${query.toString()}`, { method: "PATCH", headers: { ...supabaseHeaders(env, token), "Prefer": "return=representation" }, body: JSON.stringify({ conversation: next, updated_at: new Date().toISOString() }) });
+        const body = await response.json();
+        if (!response.ok) return json({ error: supabaseError(body, response.status, "project updating"), providerCode: String(body?.code || body?.error_code || response.status) }, response.status);
+        if (!body[0]) return json({ error: "Project not found." }, 404);
+        return json(body[0], response.status);
+      }
+      const keepHistoryHidden = Boolean(payload.historyHidden === true || (storedConversation || []).find(item => item?.type === "project_meta")?.historyHidden === true);
+      const safeConversation = Array.isArray(conversation) ? safeProjectConversation(conversation, { historyHidden: keepHistoryHidden }) : undefined;
       const query = new URLSearchParams({ id: `eq.${projectId}`, owner_id: `eq.${user.id}`, select: "id,title,locale,conversation,updated_at" });
       const update = { locale: locale === "en" ? "en" : "zh", updated_at: new Date().toISOString() };
       if (safeConversation) update.conversation = safeConversation;
