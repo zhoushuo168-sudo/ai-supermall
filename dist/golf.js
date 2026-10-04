@@ -183,7 +183,11 @@
       try {
         const project = await api(`/api/member/projects?id=${encodeURIComponent(session)}`);
         const parsed = readRecord(project);
-        if (parsed && await showResult(project)) { window.__golfSession = parsed; return; }
+        if (parsed && await showResult(project)) {
+          window.__golfSession = parsed;
+          document.dispatchEvent(new Event('golf-session-ready'));
+          return;
+        }
       } catch (error) { setStatus(error.message || text().failed); }
     }
     await listSaved();

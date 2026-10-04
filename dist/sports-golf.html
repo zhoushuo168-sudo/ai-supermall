@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="workspace.css">
 <link rel="stylesheet" href="mobile-navigation.css?v=cleanup-1">
 <link rel="stylesheet" href="zones.css?v=1">
-<link rel="stylesheet" href="golf.css?v=golf-3">
+<link rel="stylesheet" href="golf.css?v=golf-4">
 <link rel="stylesheet" href="ios-input-nozoom.css">
 <style>html.golf-locked .workspace-main{display:none}</style>
 </head>
@@ -53,37 +53,57 @@
 </section>
 <section id="golfResult" class="workspace-panel golf-card" hidden>
 <h2 data-zone-zh="挥杆分析结果" data-zone-en="Swing Analysis Result">挥杆分析结果</h2>
+<div class="golf-compare">
+<section class="golf-swing-block">
+<h3 data-zone-zh="你的挥杆" data-zone-en="Your Swing">你的挥杆</h3>
 <div class="golf-stage">
-<video id="golfResultVideo" class="golf-player" controls playsinline webkit-playsinline></video>
+<video id="golfResultVideo" class="golf-player" playsinline webkit-playsinline></video>
+<canvas id="golfAnalysisCanvas" class="golf-analysis-layer" hidden aria-hidden="true"></canvas>
 <canvas id="golfPoseCanvas" hidden></canvas>
 </div>
-<button type="button" id="golfPoseTest" class="golf-text-button golf-pose-button" data-zone-zh="姿态测试" data-zone-en="Pose Test">姿态测试</button>
-<p class="golf-pose-note" data-zone-zh="只画出人体骨架，方便查看关键点是否跟上挥杆。不判断动作好坏。" data-zone-en="Draws the body skeleton so you can see whether the joints follow the swing. It does not judge the swing.">只画出人体骨架，方便查看关键点是否跟上挥杆。不判断动作好坏。</p>
-<p id="golfPoseStatus" class="golf-pose-status" aria-live="polite"></p>
-<p id="golfPoseLegend" class="golf-pose-legend" hidden data-zone-zh="蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。" data-zone-en="Blue is the body's left side. Orange is the body's right side. An open circle means that joint is unstable.">蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。</p>
-<div id="golfPoseStats" class="golf-pose-stats" hidden></div>
-<p id="golfPoseLive" class="golf-pose-live" aria-live="polite"></p>
+</section>
+<div class="golf-transport" role="group" aria-label="Playback">
+<button type="button" id="golfPlay" data-zone-zh="播放" data-zone-en="Play">播放</button>
+<button type="button" id="golfPause" data-zone-zh="暂停" data-zone-en="Pause">暂停</button>
+<button type="button" id="golfReplay" data-zone-zh="重放" data-zone-en="Replay">重放</button>
+</div>
+<div class="golf-speeds" role="group" aria-label="Playback speed">
+<button type="button" class="golf-speed" data-golf-speed="1" aria-pressed="true">1×</button>
+<button type="button" class="golf-speed" data-golf-speed="0.5" aria-pressed="false">0.5×</button>
+<button type="button" class="golf-speed" data-golf-speed="0.3" aria-pressed="false">0.3×</button>
+</div>
+<section class="golf-swing-block">
+<h3 data-zone-zh="标准挥杆" data-zone-en="Standard Swing">标准挥杆</h3>
+<div class="golf-stage golf-standard-stage">
+<video id="golfStandardVideo" class="golf-player" playsinline webkit-playsinline hidden></video>
+<p id="golfStandardEmpty" class="golf-standard-empty" data-zone-zh="标准挥杆视频将放在这里。" data-zone-en="Standard swing video will be added here.">标准挥杆视频将放在这里。</p>
+</div>
+</section>
+</div>
+<section id="golfFindings" class="golf-findings">
+<h3 data-zone-zh="挥杆问题" data-zone-en="Swing Findings">挥杆问题</h3>
+<p data-zone-zh="挥杆比较启用后，分析结果会显示在这里。" data-zone-en="Analysis results will appear here after swing comparison is enabled.">挥杆比较启用后，分析结果会显示在这里。</p>
+<div id="golfFindingsList" hidden></div>
+</section>
 <dl class="golf-facts">
 <div><dt data-zone-zh="挥杆视频" data-zone-en="Swing video">挥杆视频</dt><dd id="golfResultName"></dd></div>
 <div><dt data-zone-zh="球杆" data-zone-en="Club">球杆</dt><dd id="golfResultClub"></dd></div>
 <div><dt data-zone-zh="拍摄角度" data-zone-en="Camera angle">拍摄角度</dt><dd id="golfResultAngle"></dd></div>
 </dl>
-<ol class="golf-phases">
-<li><span data-zone-zh="准备" data-zone-en="Setup">准备</span></li>
-<li><span data-zone-zh="起杆" data-zone-en="Takeaway">起杆</span></li>
-<li><span data-zone-zh="上杆" data-zone-en="Backswing">上杆</span></li>
-<li><span data-zone-zh="顶点" data-zone-en="Top">顶点</span></li>
-<li><span data-zone-zh="下杆" data-zone-en="Downswing">下杆</span></li>
-<li><span data-zone-zh="击球" data-zone-en="Impact">击球</span></li>
-<li><span data-zone-zh="随挥" data-zone-en="Follow-through">随挥</span></li>
-</ol>
-<p class="golf-pending" data-zone-zh="挥杆分析功能将在下一阶段启用。" data-zone-en="Analysis engine coming next.">挥杆分析功能将在下一阶段启用。</p>
+<button type="button" id="golfPoseTest" class="golf-text-button golf-pose-button" data-zone-zh="姿态测试" data-zone-en="Pose Test">姿态测试</button>
+<p class="golf-pose-note" data-zone-zh="开发测试：只在你的视频上临时画出人体骨架，不判断动作好坏。标准视频不会画线。" data-zone-en="Development test: temporarily draws a body skeleton on your video only. It does not judge the swing. The standard video stays clean.">开发测试：只在你的视频上临时画出人体骨架，不判断动作好坏。标准视频不会画线。</p>
+<p id="golfPoseStatus" class="golf-pose-status" aria-live="polite"></p>
+<p id="golfPoseLegend" class="golf-pose-legend" hidden data-zone-zh="蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。" data-zone-en="Blue is the body's left side. Orange is the body's right side. An open circle means that joint is unstable.">蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。</p>
+<div id="golfPoseStats" class="golf-pose-stats" hidden></div>
+<p id="golfPoseLive" class="golf-pose-live" aria-live="polite"></p>
 <button type="button" id="golfAnother" class="golf-primary" data-zone-zh="分析另一支挥杆" data-zone-en="Analyze another swing">分析另一支挥杆</button>
 </section>
 </main>
 <nav class="mobile-app-nav" aria-label="Mobile navigation"><a data-zone-zh="首页" data-zone-en="Home" href="index.html#top">首页</a><a data-zone-zh="AI工具" data-zone-en="AI Tools" href="index.html#discover">AI工具</a><a data-zone-zh="历史" data-zone-en="History" href="account.html?view=chats">历史</a><a data-zone-zh="项目" data-zone-en="Projects" href="account.html?view=projects">项目</a><a data-zone-zh="账户" data-zone-en="Account" href="account.html?view=account">账户</a></nav>
 <script src="zones.js?v=1"></script>
-<script src="golf.js?v=golf-2"></script>
+<script src="golf-standard.js?v=standard-1"></script>
+<script src="golf.js?v=golf-3"></script>
+<script src="golf-compare.js?v=compare-1"></script>
 <script type="module" src="golf-pose.js?v=pose-1"></script>
 </body>
 </html>
