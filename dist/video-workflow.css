@@ -9,6 +9,8 @@
 .video-workspace .workspace-form textarea { box-sizing: border-box; width: 100%; max-width: 100%; }
 .video-workspace .workspace-project-name { display: block; border: 1px solid #cfcfc8; border-radius: 12px; padding: 11px 13px; color: #151515; background: #fff; font: 16px/1.4 inherit; outline: none; }
 .video-workspace .workspace-project-name:focus { border-color: #8f8f87; box-shadow: 0 0 0 3px #ff5c4d1a; }
+.video-credits { display: grid; gap: 4px; margin: 8px 0 0; padding: 12px; border-radius: 12px; background: #f7f7f3; color: #232321; font-size: 14px; line-height: 1.45; }
+.video-credits.is-short { background: #fff1ef; color: #9f2f24; }
 .video-actions button { min-height: 44px; }
 .video-actions button:disabled { opacity: .55; }
 .video-voice-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }

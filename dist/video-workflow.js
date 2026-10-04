@@ -10,7 +10,7 @@
   const player = get('videoPlayer');
   const draftKey = 'ai-supermall-video-draft';
   const query = new URLSearchParams(location.search);
-  const state = { messages: [], images: [], projectId: '', title: '', generating: false, polling: false, saveAfterLogin: false };
+  const state = { messages: [], images: [], projectId: '', title: '', generating: false, polling: false, saveAfterLogin: false, credits: null, creditsUnavailable: false };
   const tr = () => document.documentElement.lang === 'en' ? {
     title: 'Video & shorts',
     description: 'Turn a sentence, or a photo plus a sentence, into a short video',
@@ -50,7 +50,13 @@
     browserLanguage: 'Browser language',
     listening: 'Listening…',
     tooBig: 'Use a JPG, PNG, or WEBP under 8 MB, or an MP4, MOV, or WEBM under 80 MB.',
-    timeout: 'Video generation timed out. Wait, then try once more. It was not submitted again automatically.'
+    timeout: 'Video generation timed out. Wait, then try once more. It was not submitted again automatically.',
+    creditsLoading: 'Checking credits…',
+    creditsUnavailable: 'Credits could not be confirmed. Video generation is paused.',
+    creditBalance: 'Current balance: {n} credits',
+    creditEstimate: 'This video: {n} credits',
+    creditAfter: 'Balance after generation: {n} credits',
+    creditShort: 'Not enough credits. Video generation is turned off.'
   } : {
     title: '视频与短片',
     description: '用一句话，或一张图片加一句话，生成短视频',
@@ -90,7 +96,13 @@
     browserLanguage: '浏览器语言',
     listening: '正在聆听…',
     tooBig: '图片请使用 8MB 以内的 JPG、PNG 或 WEBP。视频请使用 80MB 以内的 MP4、MOV 或 WEBM。',
-    timeout: '视频生成超时。请稍后再试一次，系统没有自动重新提交。'
+    timeout: '视频生成超时。请稍后再试一次，系统没有自动重新提交。',
+    creditsLoading: '正在确认 Credits…',
+    creditsUnavailable: '暂时无法确认 Credits，已暂停生成。',
+    creditBalance: '当前余额：{n} Credits',
+    creditEstimate: '本次预计消耗：{n} Credits',
+    creditAfter: '生成后预计余额：{n} Credits',
+    creditShort: 'Credits 不足，无法生成视频。'
   };
   const language = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
   const api = async (path, options = {}) => {
@@ -133,14 +145,68 @@
     get('projectsLink').textContent = text.projects;
     get('languageToggle').textContent = language() === 'en' ? '中文' : 'EN';
     get('workspaceNote').textContent = text.note; get('workspaceNote').hidden = !text.note;
+    renderCredits();
+    const creditsBlocked = state.creditsUnavailable || !state.credits || state.credits.sufficient === false;
     get('videoVoice').setAttribute('aria-label', text.voice);
     get('videoVoice').title = text.voice;
     get('videoVoiceLanguage').setAttribute('aria-label', text.voiceLanguage);
     get('videoVoiceLanguage').querySelector('option[value="browser"]').textContent = text.browserLanguage;
-    get('workspaceSubmit').disabled = state.generating;
-    get('videoRegenerate').disabled = !state.messages.length || state.generating;
+    get('workspaceSubmit').disabled = state.generating || creditsBlocked;
+    get('videoRegenerate').disabled = !state.messages.length || state.generating || creditsBlocked;
     get('videoDownload').disabled = !ready || state.generating;
     get('saveProject').disabled = state.generating;
+  }
+  function renderCredits() {
+    const node = get('videoCredits');
+    const text = tr();
+    if (!node) return;
+    const quote = state.credits;
+    node.classList.toggle('is-short', Boolean(state.creditsUnavailable || (quote && quote.sufficient === false)));
+    if (!quote) {
+      node.textContent = state.creditsUnavailable ? text.creditsUnavailable : text.creditsLoading;
+      return;
+    }
+    const held = state.generating || state.polling;
+    const after = held ? quote.balance : (quote.sufficient ? quote.projected : quote.balance);
+    const lines = [
+      text.creditBalance.replace('{n}', quote.balance),
+      text.creditEstimate.replace('{n}', quote.estimated),
+      text.creditAfter.replace('{n}', after)
+    ];
+    if (!held && quote.sufficient === false) lines.push(text.creditShort);
+    node.replaceChildren(...lines.map(line => {
+      const row = document.createElement('div');
+      row.textContent = line;
+      return row;
+    }));
+  }
+  function newIdempotencyKey() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  const creditKeyPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  function creditKey() {
+    const saved = sessionStorage.getItem('ai-supermall-video-credit-key') || '';
+    if (creditKeyPattern.test(saved)) return saved;
+    const key = newIdempotencyKey();
+    sessionStorage.setItem('ai-supermall-video-credit-key', key);
+    return key;
+  }
+  function clearCreditKey() { sessionStorage.removeItem('ai-supermall-video-credit-key'); }
+  async function loadCredits() {
+    try {
+      state.credits = await api('/api/member/credits');
+      state.creditsUnavailable = false;
+    } catch {
+      state.credits = null;
+      state.creditsUnavailable = true;
+    }
+    renderCredits();
+    applyCopy();
   }
   function renderUploads() {
     const list = get('videoUploads');
@@ -446,6 +512,10 @@
     if (state.generating) return;
     const instruction = (regenerate ? current()?.question : input.value).trim();
     if (!instruction) { setStatus(tr().required); input.focus(); return; }
+    if (state.creditsUnavailable || !state.credits || state.credits.sufficient === false) {
+      setStatus(state.credits && state.credits.sufficient === false ? tr().creditShort : tr().creditsUnavailable);
+      return;
+    }
     state.generating = true;
     applyCopy();
     setStatus(tr().submitting);
@@ -453,22 +523,32 @@
     let accepted = false;
     try {
       if (!(await signedIn())) { await redirectToLogin(); return; }
-      const response = await api('/api/video/generate', json({
+      const requestKey = creditKey();
+      const created = await fetch('/api/video/generate', json({
         prompt: instruction,
         images: state.images.filter(image => /^image\/(jpeg|png|webp)$/.test(image.type || '') && /^data:image\/(jpeg|png|webp);base64,/i.test(image.data || '')).map(image => ({ type: image.type, data: image.data })),
         language: language(),
         projectId: state.projectId || '',
         title: typedTitle() || state.title || '',
-        replace: Boolean(regenerate)
+        replace: Boolean(regenerate),
+        idempotencyKey: requestKey
       }));
+      const response = await created.json().catch(() => ({}));
+      if (!created.ok) {
+        if (response.code === 'retry') clearCreditKey();
+        throw new Error(response.error || tr().timeout);
+      }
       if (!response.taskId) throw new Error(tr().timeout);
+      clearCreditKey();
       accepted = true;
       if (response.projectId) {
         state.projectId = response.projectId;
         history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
       }
       const video = { taskId: response.taskId };
-      if (regenerate && message) Object.assign(message, { question: instruction, taskId: response.taskId, videoUrl: '', video, answer: '' });
+      const existing = state.messages.find(item => item.taskId === response.taskId);
+      if (existing) message = existing;
+      else if (regenerate && message) Object.assign(message, { question: instruction, taskId: response.taskId, videoUrl: '', video, answer: '' });
       else {
         message = { question: instruction, answer: '', taskId: response.taskId, videoUrl: '', video };
         state.messages.push(message);
@@ -482,7 +562,7 @@
       if (!accepted && /sign in|请先登录/i.test(String(error.message || ''))) { await redirectToLogin(); return; }
       setStatus(error.message);
     }
-    finally { state.generating = false; applyCopy(); }
+    finally { state.generating = false; await loadCredits(); }
   }
   function setupVoice() {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -620,11 +700,13 @@
       const pending = current();
       if (pending?.taskId && !pending.video?.path) {
         state.generating = true;
-        applyCopy();
         setStatus(tr().generating);
+      }
+      await loadCredits();
+      if (pending?.taskId && !pending.video?.path) {
         await pollTask(pending.taskId, pending);
         state.generating = false;
-        applyCopy();
+        await loadCredits();
       }
       if (state.saveAfterLogin && await signedIn()) await saveProject(true);
     } catch (error) {

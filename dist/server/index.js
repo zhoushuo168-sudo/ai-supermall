@@ -261,6 +261,8 @@ async function presentationRoute(request, env) {
   return json({ presentation: deck });
 }
 const videoModel = "wan3.0-video";
+const videoGenerationRequest = { resolution: "720P", duration: 5, ratio: "adaptive", prompt_extend: false, watermark: false };
+const videoCreditOperation = "video_generate";
 const videoPathPattern = /^video\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.mp4$/i;
 const safeVideo = value => {
   const taskId = String(value?.taskId || "").slice(0, 80);
@@ -324,43 +326,118 @@ async function storeVideoTask(env, token, user, { projectId, title, locale, prom
   const project = Array.isArray(body) ? body[0] : body;
   return created.ok && project?.id ? project.id : "";
 }
+const creditArgs = () => ({
+  p_model: videoModel,
+  p_operation: videoCreditOperation,
+  p_resolution: videoGenerationRequest.resolution,
+  p_input_seconds: 0,
+  p_output_seconds: videoGenerationRequest.duration
+});
+async function creditRpc(env, name, args) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return { ok: false, code: "credits_unconfigured" };
+  const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(args)
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("Credit ledger call failed", { name, status: response.status });
+    return { ok: false, code: "credits_unavailable" };
+  }
+  return body && typeof body === "object" ? body : { ok: false, code: "credits_unavailable" };
+}
+function creditRefusal(isEnglish, quote) {
+  if (quote.code === "insufficient") return json({
+    error: isEnglish ? "Not enough credits. Video generation was not started." : "Credits 不足，没有开始生成视频。",
+    code: "insufficient",
+    balance: quote.balance,
+    estimated: quote.credits,
+    projected: quote.projected
+  }, 402);
+  if (quote.code === "in_progress") return json({
+    error: isEnglish ? "That request is already being handled. It was not submitted again." : "这次请求已经在处理，没有重复提交。",
+    code: "in_progress"
+  }, 409);
+  return json({
+    error: isEnglish ? "Credits could not be confirmed. Video generation was not started." : "暂时无法确认 Credits，没有开始生成视频。",
+    code: quote.code || "credits_unavailable"
+  }, 503);
+}
+async function creditPreviewRoute(env, user) {
+  const quote = await creditRpc(env, "credit_preview", { p_user_id: user.id, ...creditArgs() });
+  if (!quote.ok) return creditRefusal(false, quote);
+  return json({
+    balance: quote.balance,
+    estimated: quote.estimated,
+    projected: quote.projected,
+    sufficient: quote.sufficient === true
+  });
+}
 async function videoCreateRoute(request, env) {
-  const { prompt = "", images = [], language = "zh", projectId = "", title = "", replace = false } = await request.json();
+  const { prompt = "", images = [], language = "zh", projectId = "", title = "", replace = false, idempotencyKey = "" } = await request.json();
   const text = String(prompt).trim().slice(0, 5000);
   const isEnglish = language === "en";
   if (!text) return json({ error: isEnglish ? "Describe the video you want." : "请先描述你想制作的视频。" }, 400);
+  const requestKey = String(idempotencyKey || "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey)) return json({ error: isEnglish ? "The video request could not be started." : "视频请求无法开始。" }, 400);
   const user = await supabaseUser(env, bearerToken(request));
   if (!user) return json({ error: isEnglish ? "Please sign in to continue." : "请先登录后再生成视频。" }, 401);
   const host = imageHost(env.BAILIAN_WORKSPACE_ID);
   if (!env.BAILIAN_API_KEY || !host) return json({ error: isEnglish ? "Video service is not configured." : "视频服务尚未配置。" }, 503);
-  const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
-  const files = Array.isArray(images) ? images.slice(0, 4).filter(item => allowed.has(String(item?.type || "")) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 8_000_000) : [];
-  const media = files.length === 1 ? [{ type: "first_frame", url: files[0].data }] : files.map(item => ({ type: "reference_image", url: item.data }));
-  const response = await fetch(`https://${host}/api/v1/services/aigc/video-generation/video-synthesis`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json", "X-DashScope-Async": "enable" },
-    body: JSON.stringify({
-      model: videoModel,
-      input: media.length ? { prompt: text, media } : { prompt: text },
-      parameters: { resolution: "720P", duration: 5, ratio: "adaptive", prompt_extend: false, watermark: false }
-    })
-  });
-  const payload = await response.json().catch(() => ({}));
-  const output = payload.output || {};
-  const code = String(output.code || payload.code || "");
-  const message = String(output.message || payload.message || "");
-  if (!response.ok || !output.task_id) {
-    console.error("Video task create failed", { status: response.status, code });
-    return videoFailure(language, code, message);
+  const reserved = await creditRpc(env, "credit_reserve", { p_user_id: user.id, p_idempotency_key: requestKey, ...creditArgs() });
+  if (!reserved.ok) return creditRefusal(isEnglish, reserved);
+  if (!reserved.created) {
+    if (reserved.task_id && (reserved.status === "reserved" || reserved.status === "posted")) return json({ taskId: reserved.task_id, status: "PENDING", model: videoModel, balance: reserved.balance, estimated: reserved.credits, replayed: true });
+    if (reserved.status === "released" || reserved.status === "failed") return json({
+      error: isEnglish ? "The previous request ended without a charge. Try once more." : "上一次请求已经结束，没有扣 Credits。请再试一次。",
+      code: "retry"
+    }, 409);
+    return creditRefusal(isEnglish, { code: "in_progress" });
   }
-  const taskId = String(output.task_id);
-  let savedProjectId = "";
+  let releaseReservation = true;
   try {
-    savedProjectId = await storeVideoTask(env, bearerToken(request), user, { projectId, title, locale: language, prompt: text, taskId, replace: Boolean(replace) });
-  } catch (error) {
-    console.error("Video task project save failed", { message: error instanceof Error ? error.message : "unknown" });
+    const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
+    const files = Array.isArray(images) ? images.slice(0, 4).filter(item => allowed.has(String(item?.type || "")) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 8_000_000) : [];
+    const media = files.length === 1 ? [{ type: "first_frame", url: files[0].data }] : files.map(item => ({ type: "reference_image", url: item.data }));
+    const response = await fetch(`https://${host}/api/v1/services/aigc/video-generation/video-synthesis`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json", "X-DashScope-Async": "enable" },
+      body: JSON.stringify({
+        model: videoModel,
+        input: media.length ? { prompt: text, media } : { prompt: text },
+        parameters: videoGenerationRequest
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    const output = payload.output || {};
+    const code = String(output.code || payload.code || "");
+    const message = String(output.message || payload.message || "");
+    if (!response.ok || !output.task_id) {
+      console.error("Video task create failed", { status: response.status, code });
+      return videoFailure(language, code, message);
+    }
+    const taskId = String(output.task_id);
+    const attached = await creditRpc(env, "credit_attach_task", { p_user_id: user.id, p_idempotency_key: requestKey, p_task_id: taskId });
+    if (!attached.ok) return json({ error: isEnglish ? "Credits could not be confirmed. Video generation was not started." : "暂时无法确认 Credits，没有开始生成视频。", code: "credits_unavailable" }, 502);
+    releaseReservation = false;
+    let savedProjectId = "";
+    try {
+      savedProjectId = await storeVideoTask(env, bearerToken(request), user, { projectId, title, locale: language, prompt: text, taskId, replace: Boolean(replace) });
+    } catch (error) {
+      console.error("Video task project save failed", { message: error instanceof Error ? error.message : "unknown" });
+    }
+    return json({ taskId, status: String(output.task_status || "PENDING"), model: videoModel, projectId: savedProjectId, balance: reserved.balance, estimated: reserved.credits });
+  } finally {
+    if (releaseReservation) {
+      try { await creditRpc(env, "credit_release", { p_idempotency_key: requestKey, p_user_id: user.id }); }
+      catch (error) { console.error("Credit release failed", { message: error instanceof Error ? error.message : "unknown" }); }
+    }
   }
-  return json({ taskId, status: String(output.task_status || "PENDING"), model: videoModel, projectId: savedProjectId });
 }
 async function videoTaskRoute(request, env, url) {
   const taskId = String(url.searchParams.get("id") || "");
@@ -380,11 +457,16 @@ async function videoTaskRoute(request, env, url) {
   }
   if (status === "SUCCEEDED") {
     const videoUrl = String(output.video_url || "");
-    if (!/^https:\/\//i.test(videoUrl)) return json({ error: language === "en" ? "The video result had no file." : "视频结果里没有文件。", status: "FAILED" }, 502);
+    if (!/^https:\/\//i.test(videoUrl)) {
+      await creditRpc(env, "credit_release", { p_task_id: taskId });
+      return json({ error: language === "en" ? "The video result had no file." : "视频结果里没有文件。", status: "FAILED" }, 502);
+    }
+    await creditRpc(env, "credit_settle", { p_task_id: taskId });
     return json({ taskId, status, videoUrl, model: videoModel });
   }
   if (status === "FAILED" || status === "CANCELED" || status === "UNKNOWN") {
     console.error("Video task failed", { status, code });
+    await creditRpc(env, "credit_release", { p_task_id: taskId });
     return videoFailure(language, code, message);
   }
   return json({ taskId, status: status || "PENDING", model: videoModel });
@@ -919,6 +1001,12 @@ export default {
         console.error("Bailian model request error", { message: error instanceof Error ? error.message : String(error) });
         return json({ error: "AI service is temporarily unavailable." }, 502);
       }
+    }
+    if (url.pathname === "/api/member/credits" && request.method === "GET") {
+      const user = await supabaseUser(env, bearerToken(request));
+      if (!user) return json({ error: "Please sign in to continue." }, 401);
+      try { return await creditPreviewRoute(env, user); }
+      catch (error) { console.error("Credit preview failed", { message: error instanceof Error ? error.message : "unknown" }); return json({ error: "Credits could not be confirmed." }, 503); }
     }
     if (url.pathname === "/api/video/generate") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
