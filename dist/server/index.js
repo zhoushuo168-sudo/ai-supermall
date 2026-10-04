@@ -262,7 +262,10 @@ async function presentationRoute(request, env) {
 }
 const videoModel = "wan3.0-video";
 const videoGenerationRequest = { resolution: "720P", duration: 5, ratio: "adaptive", prompt_extend: false, watermark: false };
+const videoEditRequest = { resolution: "720P", duration: 5, ratio: "adaptive", prompt_extend: true, watermark: false };
 const videoCreditOperation = "video_generate";
+const videoEditOperation = "video_edit";
+const referenceVideoKeyPattern = /^original\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.(?:mp4|mov)$/i;
 const videoPathPattern = /^video\/[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]+\.mp4$/i;
 const safeVideo = value => {
   const taskId = String(value?.taskId || "").slice(0, 80);
@@ -326,13 +329,77 @@ async function storeVideoTask(env, token, user, { projectId, title, locale, prom
   const project = Array.isArray(body) ? body[0] : body;
   return created.ok && project?.id ? project.id : "";
 }
-const creditArgs = () => ({
-  p_model: videoModel,
-  p_operation: videoCreditOperation,
-  p_resolution: videoGenerationRequest.resolution,
-  p_input_seconds: 0,
-  p_output_seconds: videoGenerationRequest.duration
-});
+const creditArgs = (operation, inputSeconds) => {
+  const request = operation === videoEditOperation ? videoEditRequest : videoGenerationRequest;
+  return {
+    p_model: videoModel,
+    p_operation: operation === videoEditOperation ? videoEditOperation : videoCreditOperation,
+    p_resolution: request.resolution,
+    p_input_seconds: inputSeconds,
+    p_output_seconds: request.duration
+  };
+};
+function durationFromMediaBytes(bytes) {
+  const source = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const view = new DataView(source.buffer, source.byteOffset, source.byteLength);
+  for (let index = 0; index + 24 < source.length; index += 1) {
+    if (source[index] !== 0x6d || source[index + 1] !== 0x76 || source[index + 2] !== 0x68 || source[index + 3] !== 0x64) continue;
+    const version = source[index + 4];
+    let timescale = 0;
+    let duration = 0;
+    if (version === 0) {
+      timescale = view.getUint32(index + 16);
+      duration = view.getUint32(index + 20);
+    } else if (version === 1 && index + 36 <= source.length) {
+      timescale = view.getUint32(index + 24);
+      duration = Number(view.getBigUint64(index + 28));
+    }
+    if (timescale < 1 || timescale > 1_000_000 || duration <= 0) continue;
+    const seconds = duration / timescale;
+    if (seconds >= 0.2 && seconds <= 120) return seconds;
+  }
+  return null;
+}
+function objectByteLength(response, received) {
+  const match = /\/(\d+)$/.exec(response.headers.get("content-range") || "");
+  if (match) return Number(match[1]);
+  return response.status === 200 ? received : 0;
+}
+async function referenceDuration(env, path) {
+  const url = await ossPresignedUrl(env, "GET", path, 600);
+  const head = await fetch(url, { headers: { Range: "bytes=0-1048575" } });
+  if (!head.ok && head.status !== 206) return null;
+  const first = new Uint8Array(await head.arrayBuffer());
+  const fromStart = durationFromMediaBytes(first);
+  if (fromStart) return fromStart;
+  const total = objectByteLength(head, first.byteLength);
+  if (total > first.byteLength && total <= 80 * 1024 * 1024) {
+    const start = Math.max(first.byteLength, total - 2097152);
+    const tail = await fetch(url, { headers: { Range: `bytes=${start}-${total - 1}` } });
+    if (tail.ok || tail.status === 206) {
+      const fromTail = durationFromMediaBytes(new Uint8Array(await tail.arrayBuffer()));
+      if (fromTail) return fromTail;
+    }
+    const full = await fetch(url);
+    if (full.ok) return durationFromMediaBytes(new Uint8Array(await full.arrayBuffer()));
+  }
+  return null;
+}
+async function measureReferenceVideos(env, user, paths, isEnglish) {
+  const unique = [...new Set((Array.isArray(paths) ? paths : []).map(path => String(path || "")))].filter(Boolean).slice(0, 5);
+  if (!unique.length || unique.length > 5) return { ok: false, status: 400, error: isEnglish ? "The reference video could not be used. Video generation was not started." : "参考视频无法使用，没有开始生成视频。" };
+  let total = 0;
+  for (const path of unique) {
+    if (!referenceVideoKeyPattern.test(path) || !path.startsWith(`original/${user.id}/`)) return { ok: false, status: 400, error: isEnglish ? "The reference video must be an MP4 or MOV saved for this account. Video generation was not started." : "参考视频必须是这个账号已保存的 MP4 或 MOV。没有开始生成视频。" };
+    let seconds = null;
+    try { seconds = await referenceDuration(env, path); }
+    catch (error) { console.error("Reference video duration failed", { message: error instanceof Error ? error.message : "unknown" }); }
+    if (!(seconds >= 1 && seconds <= 15)) return { ok: false, status: 400, error: isEnglish ? "The reference video must be an MP4 or MOV between 1 and 15 seconds. Video generation was not started." : "参考视频必须是 1 到 15 秒的 MP4 或 MOV。没有开始生成视频。" };
+    total += seconds;
+  }
+  if (total > 15 || total + videoEditRequest.duration > 30) return { ok: false, status: 400, error: isEnglish ? "Reference videos together must be 15 seconds or less. Video generation was not started." : "参考视频合计不能超过 15 秒。没有开始生成视频。" };
+  return { ok: true, seconds: Math.round(total * 1000) / 1000, paths: unique };
+}
 async function creditRpc(env, name, args) {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return { ok: false, code: "credits_unconfigured" };
   const response = await fetch(`${env.SUPABASE_URL.replace(/\/$/, "")}/rest/v1/rpc/${name}`, {
@@ -368,18 +435,31 @@ function creditRefusal(isEnglish, quote) {
     code: quote.code || "credits_unavailable"
   }, 503);
 }
-async function creditPreviewRoute(env, user) {
-  const quote = await creditRpc(env, "credit_preview", { p_user_id: user.id, ...creditArgs() });
-  if (!quote.ok) return creditRefusal(false, quote);
+async function creditPreviewRoute(env, user, url) {
+  const isEnglish = url.searchParams.get("language") === "en";
+  const paths = url.searchParams.getAll("videoPath");
+  let operation = videoCreditOperation;
+  let inputSeconds = 0;
+  if (paths.length) {
+    const measured = await measureReferenceVideos(env, user, paths, isEnglish);
+    if (!measured.ok) return json({ error: measured.error, code: "duration" }, measured.status || 400);
+    operation = videoEditOperation;
+    inputSeconds = measured.seconds;
+  }
+  const quote = await creditRpc(env, "credit_preview", { p_user_id: user.id, ...creditArgs(operation, inputSeconds) });
+  if (!quote.ok) return creditRefusal(isEnglish, quote);
   return json({
     balance: quote.balance,
     estimated: quote.estimated,
     projected: quote.projected,
-    sufficient: quote.sufficient === true
+    sufficient: quote.sufficient === true,
+    operation,
+    inputSeconds,
+    outputSeconds: operation === videoEditOperation ? videoEditRequest.duration : videoGenerationRequest.duration
   });
 }
 async function videoCreateRoute(request, env) {
-  const { prompt = "", images = [], language = "zh", projectId = "", title = "", replace = false, idempotencyKey = "" } = await request.json();
+  const { prompt = "", images = [], language = "zh", projectId = "", title = "", replace = false, idempotencyKey = "", referenceVideos = [] } = await request.json();
   const text = String(prompt).trim().slice(0, 5000);
   const isEnglish = language === "en";
   if (!text) return json({ error: isEnglish ? "Describe the video you want." : "请先描述你想制作的视频。" }, 400);
@@ -389,7 +469,18 @@ async function videoCreateRoute(request, env) {
   if (!user) return json({ error: isEnglish ? "Please sign in to continue." : "请先登录后再生成视频。" }, 401);
   const host = imageHost(env.BAILIAN_WORKSPACE_ID);
   if (!env.BAILIAN_API_KEY || !host) return json({ error: isEnglish ? "Video service is not configured." : "视频服务尚未配置。" }, 503);
-  const reserved = await creditRpc(env, "credit_reserve", { p_user_id: user.id, p_idempotency_key: requestKey, ...creditArgs() });
+  const referencePaths = (Array.isArray(referenceVideos) ? referenceVideos : []).map(item => String(item?.path || "")).filter(Boolean);
+  let operation = videoCreditOperation;
+  let inputSeconds = 0;
+  let acceptedReferences = [];
+  if (referencePaths.length) {
+    const measured = await measureReferenceVideos(env, user, referencePaths, isEnglish);
+    if (!measured.ok) return json({ error: measured.error, code: "duration" }, measured.status || 400);
+    operation = videoEditOperation;
+    inputSeconds = measured.seconds;
+    acceptedReferences = measured.paths;
+  }
+  const reserved = await creditRpc(env, "credit_reserve", { p_user_id: user.id, p_idempotency_key: requestKey, ...creditArgs(operation, inputSeconds) });
   if (!reserved.ok) return creditRefusal(isEnglish, reserved);
   if (!reserved.created) {
     if (reserved.task_id && (reserved.status === "reserved" || reserved.status === "posted")) return json({ taskId: reserved.task_id, status: "PENDING", model: videoModel, balance: reserved.balance, estimated: reserved.credits, replayed: true });
@@ -403,14 +494,21 @@ async function videoCreateRoute(request, env) {
   try {
     const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
     const files = Array.isArray(images) ? images.slice(0, 4).filter(item => allowed.has(String(item?.type || "")) && /^data:image\/(jpeg|png|webp);base64,/i.test(String(item?.data || "")) && String(item.data).length <= 8_000_000) : [];
-    const media = files.length === 1 ? [{ type: "first_frame", url: files[0].data }] : files.map(item => ({ type: "reference_image", url: item.data }));
+    let media = [];
+    let parameters = videoGenerationRequest;
+    if (operation === videoEditOperation) {
+      media = [];
+      for (const path of acceptedReferences) media.push({ type: "reference_video", url: await ossPresignedUrl(env, "GET", path, 3600) });
+      files.forEach(item => media.push({ type: "reference_image", url: item.data }));
+      parameters = videoEditRequest;
+    } else media = files.length === 1 ? [{ type: "first_frame", url: files[0].data }] : files.map(item => ({ type: "reference_image", url: item.data }));
     const response = await fetch(`https://${host}/api/v1/services/aigc/video-generation/video-synthesis`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${env.BAILIAN_API_KEY}`, "Content-Type": "application/json", "X-DashScope-Async": "enable" },
       body: JSON.stringify({
         model: videoModel,
         input: media.length ? { prompt: text, media } : { prompt: text },
-        parameters: videoGenerationRequest
+        parameters
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -1005,7 +1103,7 @@ export default {
     if (url.pathname === "/api/member/credits" && request.method === "GET") {
       const user = await supabaseUser(env, bearerToken(request));
       if (!user) return json({ error: "Please sign in to continue." }, 401);
-      try { return await creditPreviewRoute(env, user); }
+      try { return await creditPreviewRoute(env, user, url); }
       catch (error) { console.error("Credit preview failed", { message: error instanceof Error ? error.message : "unknown" }); return json({ error: "Credits could not be confirmed." }, 503); }
     }
     if (url.pathname === "/api/video/generate") {

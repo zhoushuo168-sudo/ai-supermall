@@ -10,7 +10,7 @@
   const player = get('videoPlayer');
   const draftKey = 'ai-supermall-video-draft';
   const query = new URLSearchParams(location.search);
-  const state = { messages: [], images: [], projectId: '', title: '', generating: false, polling: false, saveAfterLogin: false, credits: null, creditsUnavailable: false };
+  const state = { messages: [], images: [], projectId: '', title: '', generating: false, polling: false, saveAfterLogin: false, credits: null, creditsUnavailable: false, referenceBlocked: false };
   const tr = () => document.documentElement.lang === 'en' ? {
     title: 'Video & shorts',
     description: 'Turn a sentence, or a photo plus a sentence, into a short video',
@@ -56,7 +56,8 @@
     creditBalance: 'Current balance: {n} credits',
     creditEstimate: 'This video: {n} credits',
     creditAfter: 'Balance after generation: {n} credits',
-    creditShort: 'Not enough credits. Video generation is turned off.'
+    creditShort: 'Not enough credits. Video generation is turned off.',
+    referenceFormat: 'Use an MP4 or MOV reference video. Generation was not started.'
   } : {
     title: '视频与短片',
     description: '用一句话，或一张图片加一句话，生成短视频',
@@ -102,7 +103,8 @@
     creditBalance: '当前余额：{n} Credits',
     creditEstimate: '本次预计消耗：{n} Credits',
     creditAfter: '生成后预计余额：{n} Credits',
-    creditShort: 'Credits 不足，无法生成视频。'
+    creditShort: 'Credits 不足，无法生成视频。',
+    referenceFormat: '参考视频请使用 MP4 或 MOV。没有开始生成。'
   };
   const language = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
   const api = async (path, options = {}) => {
@@ -146,7 +148,7 @@
     get('languageToggle').textContent = language() === 'en' ? '中文' : 'EN';
     get('workspaceNote').textContent = text.note; get('workspaceNote').hidden = !text.note;
     renderCredits();
-    const creditsBlocked = state.creditsUnavailable || !state.credits || state.credits.sufficient === false;
+    const creditsBlocked = state.referenceBlocked || state.creditsUnavailable || !state.credits || state.credits.sufficient === false;
     get('videoVoice').setAttribute('aria-label', text.voice);
     get('videoVoice').title = text.voice;
     get('videoVoiceLanguage').setAttribute('aria-label', text.voiceLanguage);
@@ -161,7 +163,8 @@
     const text = tr();
     if (!node) return;
     const quote = state.credits;
-    node.classList.toggle('is-short', Boolean(state.creditsUnavailable || (quote && quote.sufficient === false)));
+    node.classList.toggle('is-short', Boolean(state.referenceBlocked || state.creditsUnavailable || (quote && quote.sufficient === false)));
+    if (state.referenceBlocked) { node.textContent = text.referenceFormat; return; }
     if (!quote) {
       node.textContent = state.creditsUnavailable ? text.creditsUnavailable : text.creditsLoading;
       return;
@@ -197,13 +200,42 @@
     return key;
   }
   function clearCreditKey() { sessionStorage.removeItem('ai-supermall-video-credit-key'); }
+  function referenceVideos() {
+    return state.images.filter(item => item.type === 'video/mp4' || item.type === 'video/quicktime');
+  }
+  async function ensureProject() {
+    if (state.projectId) return;
+    const title = typedTitle() || state.title || defaultTitle();
+    const created = await api('/api/member/projects', json({ title, locale: language(), conversation: projectConversation() }));
+    const project = Array.isArray(created) ? created[0] : created;
+    if (!project?.id) throw new Error(language() === 'en' ? 'The file could not be saved.' : '文件没有保存成功。');
+    state.projectId = project.id;
+    state.title = project.title || title;
+    history.replaceState(null, '', `create-video.html?project=${encodeURIComponent(state.projectId)}`);
+  }
   async function loadCredits() {
-    try {
-      state.credits = await api('/api/member/credits');
+    state.referenceBlocked = state.images.some(item => item.type === 'video/webm');
+    if (state.referenceBlocked) {
+      state.credits = null;
       state.creditsUnavailable = false;
-    } catch {
+      renderCredits();
+      applyCopy();
+      return;
+    }
+    const videos = referenceVideos();
+    try {
+      if (videos.some(item => !item.path)) {
+        await ensureProject();
+        await uploadDraftImages();
+      }
+      const params = new URLSearchParams({ language: language() });
+      videos.forEach(video => { if (video.path) params.append('videoPath', video.path); });
+      state.credits = await api(`/api/member/credits?${params}`);
+      state.creditsUnavailable = false;
+    } catch (error) {
       state.credits = null;
       state.creditsUnavailable = true;
+      if (videos.length) setStatus(error.message);
     }
     renderCredits();
     applyCopy();
@@ -255,8 +287,8 @@
     const latest = current();
     if (latest && !latest.video?.taskId && !latest.video?.path) latest.images = storedImages();
     else if (latest) latest.images = storedImages();
-    if (!state.projectId) return;
-    await api('/api/member/projects', patch({ id: state.projectId, locale: language(), conversation: projectConversation() }));
+    if (state.projectId) await api('/api/member/projects', patch({ id: state.projectId, locale: language(), conversation: projectConversation() }));
+    await loadCredits();
   }
   function render() {
     const latest = current();
@@ -512,8 +544,15 @@
     if (state.generating) return;
     const instruction = (regenerate ? current()?.question : input.value).trim();
     if (!instruction) { setStatus(tr().required); input.focus(); return; }
-    if (state.creditsUnavailable || !state.credits || state.credits.sufficient === false) {
-      setStatus(state.credits && state.credits.sufficient === false ? tr().creditShort : tr().creditsUnavailable);
+    if (state.images.some(item => item.type === 'video/webm')) { setStatus(tr().referenceFormat); return; }
+    const selectedVideos = referenceVideos();
+    if (selectedVideos.length && selectedVideos.some(item => !item.path)) {
+      await ensureProject();
+      await uploadDraftImages();
+    }
+    await loadCredits();
+    if (state.referenceBlocked || state.creditsUnavailable || !state.credits || state.credits.sufficient === false) {
+      setStatus(state.referenceBlocked ? tr().referenceFormat : (state.credits && state.credits.sufficient === false ? tr().creditShort : tr().creditsUnavailable));
       return;
     }
     state.generating = true;
@@ -531,7 +570,8 @@
         projectId: state.projectId || '',
         title: typedTitle() || state.title || '',
         replace: Boolean(regenerate),
-        idempotencyKey: requestKey
+        idempotencyKey: requestKey,
+        referenceVideos: referenceVideos().filter(video => video.path).map(video => ({ path: video.path }))
       }));
       const response = await created.json().catch(() => ({}));
       if (!created.ok) {
@@ -651,6 +691,7 @@
     }
     renderUploads();
     await saveImages();
+    if (state.images.some(item => /^video\//.test(item.type || ''))) await loadCredits();
   }
 
   const storedLanguage = localStorage.getItem('ai-supermall-language');
