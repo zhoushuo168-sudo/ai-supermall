@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="workspace.css">
 <link rel="stylesheet" href="mobile-navigation.css?v=cleanup-1">
 <link rel="stylesheet" href="zones.css?v=1">
-<link rel="stylesheet" href="golf.css?v=golf-4">
+<link rel="stylesheet" href="golf.css?v=golf-13">
 <link rel="stylesheet" href="ios-input-nozoom.css">
 <style>html.golf-locked .workspace-main{display:none}</style>
 </head>
@@ -33,8 +33,8 @@
 <fieldset class="golf-field">
 <legend data-zone-zh="球杆" data-zone-en="Club">球杆</legend>
 <div class="golf-choices">
-<label class="golf-choice"><input type="radio" name="club" value="driver"><span data-zone-zh="1号木" data-zone-en="Driver">1号木</span></label>
-<label class="golf-choice"><input type="radio" name="club" value="iron"><span data-zone-zh="铁杆" data-zone-en="Iron">铁杆</span></label>
+<label class="golf-choice"><input type="radio" name="club" value="driver"><span data-zone-zh="铁杆" data-zone-en="Iron">铁杆</span></label>
+<label class="golf-choice"><input type="radio" name="club" value="iron"><span data-zone-zh="1号木" data-zone-en="Driver">1号木</span></label>
 </div>
 </fieldset>
 <fieldset class="golf-field">
@@ -53,6 +53,11 @@
 </section>
 <section id="golfResult" class="workspace-panel golf-card" hidden>
 <h2 data-zone-zh="挥杆分析结果" data-zone-en="Swing Analysis Result">挥杆分析结果</h2>
+<section id="golfSwingSpan" class="golf-swing-span">
+<p id="golfSwingSpanText">诊断 span-7
+正在查找完整挥杆…</p>
+<video id="golfSwingClip" class="golf-player" controls playsinline webkit-playsinline hidden></video>
+</section>
 <div class="golf-compare">
 <section class="golf-swing-block">
 <h3 data-zone-zh="你的挥杆" data-zone-en="Your Swing">你的挥杆</h3>
@@ -75,35 +80,37 @@
 <section class="golf-swing-block">
 <h3 data-zone-zh="标准挥杆" data-zone-en="Standard Swing">标准挥杆</h3>
 <div class="golf-stage golf-standard-stage">
-<video id="golfStandardVideo" class="golf-player" playsinline webkit-playsinline hidden></video>
-<p id="golfStandardEmpty" class="golf-standard-empty" data-zone-zh="标准挥杆视频将放在这里。" data-zone-en="Standard swing video will be added here.">标准挥杆视频将放在这里。</p>
+<video id="golfStandardVideo" class="golf-player" src="/golf/standard/driver-face-v1.mp4" playsinline webkit-playsinline preload="auto" muted hidden></video>
+<canvas id="golfStandardPoseCanvas" class="golf-standard-pose" hidden aria-hidden="true"></canvas>
+<p id="golfStandardPoseStatus" class="golf-standard-pose-status" hidden></p>
+<p id="golfStandardEmpty" class="golf-standard-empty" hidden data-zone-zh="标准挥杆视频将放在这里。" data-zone-en="Standard swing video will be added here.">标准挥杆视频将放在这里。</p>
 </div>
 </section>
 </div>
+<section id="golfStills" class="golf-stills" hidden>
+<div id="golfStillsGrid" class="golf-stills-grid"></div>
+</section>
 <section id="golfFindings" class="golf-findings">
-<h3 data-zone-zh="挥杆问题" data-zone-en="Swing Findings">挥杆问题</h3>
-<p data-zone-zh="挥杆比较启用后，分析结果会显示在这里。" data-zone-en="Analysis results will appear here after swing comparison is enabled.">挥杆比较启用后，分析结果会显示在这里。</p>
+<h3 data-zone-zh="与标准的差异" data-zone-en="Difference from the standard">与标准的差异</h3>
+<p id="golfFindingsNote" data-zone-zh="分析后，这里显示与标准挥杆的差异。" data-zone-en="Differences from the standard swing appear here after analysis.">分析后，这里显示与标准挥杆的差异。</p>
 <div id="golfFindingsList" hidden></div>
 </section>
-<dl class="golf-facts">
+<dl class="golf-facts" hidden>
 <div><dt data-zone-zh="挥杆视频" data-zone-en="Swing video">挥杆视频</dt><dd id="golfResultName"></dd></div>
 <div><dt data-zone-zh="球杆" data-zone-en="Club">球杆</dt><dd id="golfResultClub"></dd></div>
 <div><dt data-zone-zh="拍摄角度" data-zone-en="Camera angle">拍摄角度</dt><dd id="golfResultAngle"></dd></div>
 </dl>
-<button type="button" id="golfPoseTest" class="golf-text-button golf-pose-button" data-zone-zh="姿态测试" data-zone-en="Pose Test">姿态测试</button>
-<p class="golf-pose-note" data-zone-zh="开发测试：只在你的视频上临时画出人体骨架，不判断动作好坏。标准视频不会画线。" data-zone-en="Development test: temporarily draws a body skeleton on your video only. It does not judge the swing. The standard video stays clean.">开发测试：只在你的视频上临时画出人体骨架，不判断动作好坏。标准视频不会画线。</p>
+<p class="golf-pose-note" data-zone-zh="骨架和参考线只画在你的视频上。标准挥杆保持原样。" data-zone-en="The skeleton and guide lines are drawn only on your video. The standard swing stays clean.">骨架和参考线只画在你的视频上。标准挥杆保持原样。</p>
 <p id="golfPoseStatus" class="golf-pose-status" aria-live="polite"></p>
-<p id="golfPoseLegend" class="golf-pose-legend" hidden data-zone-zh="蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。" data-zone-en="Blue is the body's left side. Orange is the body's right side. An open circle means that joint is unstable.">蓝色是身体左侧，橙色是身体右侧。空心点表示这个部位不够稳定。</p>
-<div id="golfPoseStats" class="golf-pose-stats" hidden></div>
-<p id="golfPoseLive" class="golf-pose-live" aria-live="polite"></p>
 <button type="button" id="golfAnother" class="golf-primary" data-zone-zh="分析另一支挥杆" data-zone-en="Analyze another swing">分析另一支挥杆</button>
 </section>
 </main>
 <nav class="mobile-app-nav" aria-label="Mobile navigation"><a data-zone-zh="首页" data-zone-en="Home" href="index.html#top">首页</a><a data-zone-zh="AI工具" data-zone-en="AI Tools" href="index.html#discover">AI工具</a><a data-zone-zh="历史" data-zone-en="History" href="account.html?view=chats">历史</a><a data-zone-zh="项目" data-zone-en="Projects" href="account.html?view=projects">项目</a><a data-zone-zh="账户" data-zone-en="Account" href="account.html?view=account">账户</a></nav>
 <script src="zones.js?v=1"></script>
-<script src="golf-standard.js?v=standard-1"></script>
-<script src="golf.js?v=golf-3"></script>
-<script src="golf-compare.js?v=compare-1"></script>
-<script type="module" src="golf-pose.js?v=pose-1"></script>
+<script src="golf-standard.js?v=standard-3"></script>
+<script src="golf.js?v=golf-4"></script>
+<script src="golf-compare.js?v=compare-4"></script>
+<script type="module" src="golf-pose.js?v=pose-19"></script>
+<script type="module" src="golf-swing-span.js?v=span-7"></script>
 </body>
 </html>
