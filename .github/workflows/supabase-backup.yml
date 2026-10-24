@@ -1,0 +1,91 @@
+name: Supabase encrypted backup (manual first)
+on:
+  workflow_dispatch:
+    inputs:
+      production_backup:
+        description: Approved first production backup; leave false for synthetic checks
+        required: true
+        type: boolean
+        default: false
+# NO active schedule. Only after real restore verification and separate approval:
+# schedule:
+#   - cron: '17 10 * * *'  # UTC; not enabled by this preparation.
+permissions:
+  contents: read
+concurrency:
+  group: supabase-production-backup
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    container: postgres:17
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ops/supabase-backup
+    outputs:
+      object_key: ${{ steps.backup.outputs.object_key }}
+      sha256: ${{ steps.backup.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install standard backup tools (runner only)
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends python3 age awscli
+      - name: Static and synthetic checks (never production)
+        run: python3 -B -m unittest discover -s tests -p "test_*.py" -v
+      - name: Fictional PostgreSQL restore (local sockets only)
+        run: runuser -u postgres -- env RUNNER_TEMP=/tmp python3 -B tests/test_local_postgres.py
+      - name: Approved encrypted backup and R2 readback
+        id: backup
+        if: ${{ github.event_name == 'schedule' || inputs.production_backup }}
+        env:
+          BACKUP_PRODUCTION_APPROVED: ${{ vars.BACKUP_PRODUCTION_APPROVED }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          PGHOST: ${{ secrets.BACKUP_PGHOST }}
+          PGPORT: '5432'
+          PGDATABASE: postgres
+          PGUSER: ${{ secrets.BACKUP_PGUSER }}
+          PGPASSWORD: ${{ secrets.BACKUP_PGPASSWORD }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          R2_ACCOUNT_ID: ${{ secrets.BACKUP_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+          MAX_BACKUP_BYTES: ${{ vars.BACKUP_MAX_BYTES }}
+          AWS_EC2_METADATA_DISABLED: 'true'
+        run: python3 -B scripts/backup.py --approved-production-backup
+      - name: Failure notice (GitHub run status only)
+        if: ${{ failure() }}
+        run: echo "::error::Backup preparation or backup failed. See the safe stage/code above. No success was recorded."
+  verify-restore:
+    needs: prepare
+    if: ${{ inputs.production_backup }}
+    runs-on: ubuntu-24.04
+    container: postgres:17
+    environment: backup-restore-validation
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ops/supabase-backup
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install restore tools (disposable runner only)
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends python3 age awscli
+      - name: Download, decrypt, and verify in a NEW local-only database
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.BACKUP_R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+          BACKUP_OBJECT_KEY: ${{ needs.prepare.outputs.object_key }}
+          BACKUP_OBJECT_SHA256: ${{ needs.prepare.outputs.sha256 }}
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+          AWS_EC2_METADATA_DISABLED: 'true'
+        run: runuser -u postgres -- env RUNNER_TEMP=/tmp python3 -B scripts/verify_uploaded.py
