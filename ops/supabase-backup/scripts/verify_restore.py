@@ -51,7 +51,15 @@ def restore_contents(folder,env):
  actual=manifest(inventory_env)
  actual['roles']=[r for r in actual['roles'] if r[0]!=RESTORE_ADMIN]
  differences=[key for key in expected if expected[key]!=actual.get(key)]
- if differences:raise Failure('restore_verification','inventory_mismatch_'+','.join(differences))
+ if differences:
+  fields=[]
+  if 'tables' in differences:
+   by_name={(r['schema'],r['name']):r for r in actual['tables']}
+   fields+=['table_'+key for key in sorted({key for row in expected['tables'] for key in row if row[key]!=by_name.get((row['schema'],row['name']),{}).get(key)})]
+  if 'functions' in differences:
+   by_name={tuple(r[:3]):r for r in actual['functions']};labels=['schema','name','arguments','definition','owner','acl','definer','config']
+   fields+=['function_'+labels[i] for i in sorted({i for row in expected['functions'] for i in range(len(row)) if row[i]!=(by_name.get(tuple(row[:3])) or [None]*len(row))[i]})]
+  raise Failure('restore_verification','inventory_mismatch_'+','.join(differences+fields))
  return {'stage':'restore_verified','code':'local_rows_relations_roles_rls_functions_match','tables':len(expected['tables'])}
 def main():
  p=argparse.ArgumentParser(description=__doc__)
