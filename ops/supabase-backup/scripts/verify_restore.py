@@ -34,6 +34,25 @@ def target_env(sock,user='postgres'):
  e={k:v for k,v in os.environ.items() if k in ('PATH','HOME','TMPDIR','LANG','LC_ALL')}
  e.update(PGHOST=str(sock),PGPORT='5432',PGDATABASE='postgres',PGUSER=user,PGSSLMODE='disable',PGAPPNAME='local-backup-restore-verification')
  return e
+def canonical_acls(inventory,env):
+ # pg_dump may replay the same grants in a different array order. Compare every
+ # effective grant, including its grantor and grant option, without changing ACLs.
+ rows=[{'acl':r['acl'],'owner':r['owner'],'kind':'r'} for r in inventory['tables']]
+ rows += [{'acl':r[5],'owner':r[4],'kind':'f'} for r in inventory['functions']]
+ payload=json.dumps(rows).replace("'","''")
+ sql="""SELECT coalesce(jsonb_agg(grants ORDER BY ord),'[]') FROM (
+ SELECT x.ord,(SELECT coalesce(jsonb_agg(jsonb_build_array(
+ CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee)::text END,
+ pg_get_userbyid(a.grantor)::text,a.privilege_type,a.is_grantable)
+ ORDER BY a.grantee::regrole::text,a.grantor::regrole::text,a.privilege_type,a.is_grantable),'[]')
+ FROM aclexplode(CASE WHEN x.item->>'acl' IS NULL
+ THEN acldefault((x.item->>'kind')::\"char\",(x.item->>'owner')::regrole)
+ ELSE (x.item->>'acl')::aclitem[] END) a) grants
+ FROM jsonb_array_elements('"""+payload+"'::jsonb) WITH ORDINALITY x(item,ord)) q"
+ values=json.loads(run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-c',sql],'restore_acl_comparison',env=env))
+ if len(values)!=len(rows):raise Failure('restore_acl_comparison','invalid_result')
+ for row,value in zip(inventory['tables'],values):row['acl']=value
+ for row,value in zip(inventory['functions'],values[len(inventory['tables']):]):row[5]=value
 def restore_contents(folder,env):
  # Called only inside a newly initialized, local-only disposable cluster.
  if not env.get('PGHOST','').startswith('/') or env.get('PGDATABASE')!='postgres':
@@ -50,6 +69,7 @@ def restore_contents(folder,env):
  if env['PGUSER']=='supabase_admin':inventory_env.update(PGUSER='postgres',PGOPTIONS='-c default_transaction_read_only=on')
  actual=manifest(inventory_env)
  actual['roles']=[r for r in actual['roles'] if r[0]!=RESTORE_ADMIN]
+ canonical_acls(expected,env);canonical_acls(actual,env)
  differences=[key for key in expected if expected[key]!=actual.get(key)]
  if differences:
   fields=[]
