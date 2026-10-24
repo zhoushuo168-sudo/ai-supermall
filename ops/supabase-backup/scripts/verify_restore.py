@@ -44,7 +44,11 @@ def restore_contents(folder,env):
   raise Failure('restore_extensions','matching_supabase_extensions_required')
  restore_roles(folder,env)
  run(['pg_restore','--exit-on-error','--single-transaction','--dbname=postgres',str(folder/'database.dump')],'restore_database',env=env)
- actual=manifest(env)
+ # Production exports use the Supabase postgres login. Its restored search_path
+ # controls deparsed defaults, policies, indexes and function definitions.
+ inventory_env=env.copy()
+ if env['PGUSER']=='supabase_admin':inventory_env.update(PGUSER='postgres',PGOPTIONS='-c default_transaction_read_only=on')
+ actual=manifest(inventory_env)
  actual['roles']=[r for r in actual['roles'] if r[0]!=RESTORE_ADMIN]
  differences=[key for key in expected if expected[key]!=actual.get(key)]
  if differences:raise Failure('restore_verification','inventory_mismatch_'+','.join(differences))
