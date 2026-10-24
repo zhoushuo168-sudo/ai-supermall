@@ -7,7 +7,7 @@ from backup import collect,run,manifest,Failure,Snapshot
 from verify_restore import target_env,restore_contents,RESTORE_ADMIN,bootstrap_role
 SQL="""
 CREATE ROLE fixture_reader NOLOGIN;
-CREATE ROLE postgres LOGIN;
+CREATE ROLE postgres LOGIN BYPASSRLS;
 GRANT fixture_reader TO postgres GRANTED BY supabase_admin;
 CREATE SCHEMA auth;
 CREATE TABLE auth.users(id uuid PRIMARY KEY,raw_user_meta_data jsonb);
@@ -27,6 +27,8 @@ GRANT SELECT ON public.business_customers TO fixture_reader;
 CREATE FUNCTION public.fixture_total(q numeric,p numeric) RETURNS numeric LANGUAGE sql IMMUTABLE AS 'SELECT q*p';
 CREATE FUNCTION public.fixture_guard() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END';
 CREATE TRIGGER fixture_guard BEFORE UPDATE ON public.business_quotes FOR EACH ROW EXECUTE FUNCTION public.fixture_guard();
+GRANT USAGE ON SCHEMA auth TO postgres;
+GRANT SELECT ON ALL TABLES IN SCHEMA auth,public TO postgres;
 """
 def sql(env,s):
  return run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-c',s],'fictional_sql',env=env).decode().strip()
