@@ -7,6 +7,14 @@ on:
         required: true
         type: boolean
         default: false
+      restore_object_name:
+        description: Existing encrypted object name for restore-only verification; leaves production untouched
+        required: false
+        type: string
+      restore_sha256:
+        description: SHA-256 of that existing encrypted object
+        required: false
+        type: string
 # NO active schedule. Only after real restore verification and separate approval:
 # schedule:
 #   - cron: '17 10 * * *'  # UTC; not enabled by this preparation.
@@ -63,9 +71,9 @@ jobs:
         run: echo "::error::Backup preparation or backup failed. See the safe stage/code above. No success was recorded."
   verify-restore:
     needs: prepare
-    if: ${{ inputs.production_backup }}
+    if: ${{ inputs.production_backup || inputs.restore_object_name != '' }}
     runs-on: ubuntu-24.04
-    container: postgres:17
+    container: supabase/postgres@sha256:b0463b9ab930a3535478d529b915d37def49d5a8fb0cb1927929e96af992b519
     environment: backup-restore-validation
     timeout-minutes: 20
     defaults:
@@ -85,9 +93,9 @@ jobs:
           R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
-          BACKUP_OBJECT_NAME: ${{ needs.prepare.outputs.object_name }}
+          BACKUP_OBJECT_NAME: ${{ needs.prepare.outputs.object_name || inputs.restore_object_name }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          BACKUP_OBJECT_SHA256: ${{ needs.prepare.outputs.sha256 }}
+          BACKUP_OBJECT_SHA256: ${{ needs.prepare.outputs.sha256 || inputs.restore_sha256 }}
           BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
           AWS_EC2_METADATA_DISABLED: 'true'
         run: runuser -u postgres -- env RUNNER_TEMP=/tmp python3 -B scripts/verify_uploaded.py
