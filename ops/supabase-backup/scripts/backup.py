@@ -74,7 +74,7 @@ def collect(folder,env,*,require_coverage=True):
   if require_coverage:check_coverage(m)
   (folder/'manifest.json').write_text(json.dumps(m,sort_keys=True))
   run(['pg_dump','-w','--format=custom','--snapshot='+snapshot.identifier,'--file='+str(folder/'database.dump')],'database_dump',env=env)
-  roles=run(['pg_dumpall','-w','--roles-only','--no-role-passwords','--exclude-role=postgres'],'database_roles',env=env)
+  roles=run(['pg_dumpall','-w','--roles-only','--no-role-passwords'],'database_roles',env=env)
   (folder/'roles.sql').write_bytes(roles)
  run(['pg_restore','--list',str(folder/'database.dump')],'archive_format')
  for p in folder.iterdir():p.chmod(0o600)
@@ -114,7 +114,7 @@ def upload(archive,work):
  downloaded=work/'readback.age'
  run(base+['get-object','--bucket',bucket,'--key',key,str(downloaded)],'r2_readback')
  if digest(archive)!=digest(downloaded):raise Failure('r2_integrity','checksum_mismatch')
- return {'stage':'complete','code':'encrypted_upload_readback_verified','bucket':bucket,'object_key':key,'created_utc':created,'bytes':archive.stat().st_size,'sha256':digest(archive)}
+ return {'stage':'complete','code':'encrypted_upload_readback_verified','bucket':bucket,'object_key':key,'object_name':key.rsplit('/',1)[1],'created_utc':created,'bytes':archive.stat().st_size,'sha256':digest(archive)}
 def main():
  parser=argparse.ArgumentParser(description=__doc__)
  parser.add_argument('--approved-production-backup',action='store_true')
@@ -143,7 +143,7 @@ def main():
   result=upload(encrypted,work)
   if os.environ.get('GITHUB_OUTPUT'):
    with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-    for name in ('object_key','sha256'):
+    for name in ('object_name','sha256'):
      output.write(name+'='+result[name]+'\n')
   print(json.dumps(result),flush=True)
 if __name__=='__main__':
