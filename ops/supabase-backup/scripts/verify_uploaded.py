@@ -5,9 +5,10 @@ from pathlib import Path
 from backup import Failure,run,digest,emit
 
 def main():
- required=('R2_ACCOUNT_ID','R2_BUCKET','AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','BACKUP_OBJECT_KEY','BACKUP_OBJECT_SHA256','BACKUP_AGE_IDENTITY')
+ required=('R2_ACCOUNT_ID','R2_BUCKET','AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY','BACKUP_OBJECT_NAME','SUPABASE_PROJECT_REF','BACKUP_OBJECT_SHA256','BACKUP_AGE_IDENTITY')
  if any(not os.environ.get(n) for n in required):raise Failure('restore_configuration','missing_restore_setting')
- account=os.environ['R2_ACCOUNT_ID'];bucket=os.environ['R2_BUCKET'];key=os.environ['BACKUP_OBJECT_KEY']
+ account=os.environ['R2_ACCOUNT_ID'];bucket=os.environ['R2_BUCKET']
+ key='ai-supermall/supabase/'+os.environ['SUPABASE_PROJECT_REF']+'/'+os.environ['BACKUP_OBJECT_NAME']
  if not re.fullmatch('[a-f0-9]{32}',account) or not re.fullmatch('[a-z0-9][a-z0-9-]{1,61}[a-z0-9]',bucket):raise Failure('restore_configuration','invalid_r2_destination')
  if not re.fullmatch(r'ai-supermall/supabase/[a-z]{20}/[0-9]{8}T[0-9]{6}Z-[a-f0-9]{16}\.tar\.age',key):raise Failure('restore_configuration','invalid_backup_object_key')
  if not re.fullmatch('[a-f0-9]{64}',os.environ['BACKUP_OBJECT_SHA256']):raise Failure('restore_configuration','invalid_checksum')
