@@ -4,9 +4,11 @@ import json,os,shutil,sys,tempfile
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from backup import collect,run,manifest,Failure,Snapshot
-from verify_restore import target_env,restore_contents,RESTORE_ADMIN
+from verify_restore import target_env,restore_contents,RESTORE_ADMIN,bootstrap_role
 SQL="""
 CREATE ROLE fixture_reader NOLOGIN;
+CREATE ROLE postgres NOLOGIN;
+GRANT fixture_reader TO postgres GRANTED BY supabase_admin;
 CREATE SCHEMA auth;
 CREATE TABLE auth.users(id uuid PRIMARY KEY,raw_user_meta_data jsonb);
 CREATE TABLE public.business_customers(id uuid PRIMARY KEY,owner_id uuid REFERENCES auth.users(id),name text,UNIQUE(id,owner_id));
@@ -40,7 +42,7 @@ def main():
  with tempfile.TemporaryDirectory(prefix='pg-',dir=os.environ.get('RUNNER_TEMP')) as tmp:
   root=Path(tmp);active=[]
   try:
-   source,e=start(root,'a');active.append((source,e));sql(e,SQL)
+   source,e=start(root,'a','supabase_admin');active.append((source,e));sql(e,SQL)
    # Prove the inventory can retain a stable snapshot while a different transaction writes.
    with Snapshot(e) as snap:
     old=manifest(e,snap.identifier)
@@ -48,7 +50,7 @@ def main():
     assert manifest(e,snap.identifier)==old
     assert manifest(e)!=old
    plain=root/'plain';plain.mkdir(mode=0o700);expected=collect(plain,e,require_coverage=False)
-   target,t=start(root,'b',RESTORE_ADMIN);active.append((target,t))
+   target,t=start(root,'b',bootstrap_role(expected));active.append((target,t))
    result=restore_contents(plain,t)
    actual=manifest(t);actual['roles']=[r for r in actual['roles'] if r[0]!=RESTORE_ADMIN]
    assert actual==expected
