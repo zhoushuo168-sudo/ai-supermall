@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """Decrypt to a NEW local socket-only cluster. Never accepts a remote restore URL."""
-import argparse,json,os,shutil,subprocess,sys,tarfile,tempfile
+import argparse,json,os,re,shutil,subprocess,sys,tarfile,tempfile
 from pathlib import Path
 from backup import Failure,run,manifest,emit
 NAMES={'database.dump','roles.sql','manifest.json'}
 RESTORE_ADMIN='ai_supermall_restore_admin'
+def restore_roles(folder,env):
+ # Classify only fixed PostgreSQL error phrases; never log SQL or role settings.
+ p=subprocess.run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-f',str(folder/'roles.sql')],env=env,capture_output=True,timeout=600)
+ if p.returncode:
+  error=p.stderr.decode('utf-8','replace')
+  checks=[('permission denied to set parameter','parameter_permission_denied'),('permission denied to alter role','alter_role_permission_denied'),('permission denied to create role','create_role_permission_denied'),('must be superuser','superuser_required'),('Permission denied','file_permission_denied')]
+  code=next((code for phrase,code in checks if phrase in error),'roles_restore_failed')
+  location=re.search(r'LOCATION:\s+([a-zA-Z_]+),\s+([a-zA-Z_]+)\.c:[0-9]+',error)
+  if location:code+='_'+location[1].lower()+'_'+location[2].lower()
+  raise Failure('restore_roles',code)
 def safe_unpack(archive,folder):
  with tarfile.open(archive,'r:') as tar:
   members=tar.getmembers()
@@ -24,7 +34,7 @@ def restore_contents(folder,env):
  available=json.loads(run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-c',"SELECT coalesce(json_agg(json_build_array(name,version)),'[]') FROM pg_available_extension_versions"],'restore_extensions',env=env))
  if any(pair not in available for pair in expected['extensions']):
   raise Failure('restore_extensions','matching_supabase_extensions_required')
- run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-f',str(folder/'roles.sql')],'restore_roles',env=env)
+ restore_roles(folder,env)
  run(['pg_restore','--exit-on-error','--single-transaction','--dbname=postgres',str(folder/'database.dump')],'restore_database',env=env)
  actual=manifest(env)
  actual['roles']=[r for r in actual['roles'] if r[0]!=RESTORE_ADMIN]
