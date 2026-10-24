@@ -85,8 +85,7 @@ jobs:
           persist-credentials: false
       - name: Install restore tools (disposable runner only)
         run: |
-          apt-get update -qq
-          apt-get install -y --no-install-recommends python3 age awscli
+          apk add --no-cache python3 age aws-cli
       - name: Download, decrypt, and verify in a NEW local-only database
         env:
           R2_ACCOUNT_ID: ${{ secrets.BACKUP_R2_ACCOUNT_ID }}
@@ -98,4 +97,4 @@ jobs:
           BACKUP_OBJECT_SHA256: ${{ needs.prepare.outputs.sha256 || inputs.restore_sha256 }}
           BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
           AWS_EC2_METADATA_DISABLED: 'true'
-        run: runuser -u postgres -- env RUNNER_TEMP=/tmp python3 -B scripts/verify_uploaded.py
+        run: su-exec postgres env RUNNER_TEMP=/tmp python3 -B scripts/verify_uploaded.py
