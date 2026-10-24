@@ -7,7 +7,7 @@ from backup import collect,run,manifest,Failure,Snapshot
 from verify_restore import target_env,restore_contents,RESTORE_ADMIN,bootstrap_role
 SQL="""
 CREATE ROLE fixture_reader NOLOGIN;
-CREATE ROLE postgres NOLOGIN;
+CREATE ROLE postgres LOGIN;
 GRANT fixture_reader TO postgres GRANTED BY supabase_admin;
 CREATE SCHEMA auth;
 CREATE TABLE auth.users(id uuid PRIMARY KEY,raw_user_meta_data jsonb);
