@@ -5,9 +5,17 @@ from pathlib import Path
 from backup import Failure,run,manifest,emit
 NAMES={'database.dump','roles.sql','manifest.json'}
 RESTORE_ADMIN='ai_supermall_restore_admin'
+def bootstrap_role(expected):
+ # Supabase's original bootstrap identity must retain PostgreSQL's bootstrap OID.
+ # Explicit GRANTED BY grants otherwise fail even for a different superuser.
+ return 'supabase_admin' if any(r[0]=='supabase_admin' and r[1] is True for r in expected['roles']) else RESTORE_ADMIN
 def restore_roles(folder,env):
  # Classify only fixed PostgreSQL error phrases; never log SQL or role settings.
- p=subprocess.run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-f',str(folder/'roles.sql')],env=env,capture_output=True,timeout=600)
+ roles=(folder/'roles.sql').read_text()
+ if env['PGUSER']=='supabase_admin':
+  roles,count=re.subn(r'^CREATE ROLE (?:supabase_admin|"supabase_admin");\r?\n','',roles,flags=re.M)
+  if count!=1:raise Failure('restore_roles','bootstrap_role_definition_not_unique')
+ p=subprocess.run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose'],input=roles.encode(),env=env,capture_output=True,timeout=600)
  if p.returncode:
   error=p.stderr.decode('utf-8','replace')
   checks=[('permission denied to set parameter','parameter_permission_denied'),('permission denied to alter role','alter_role_permission_denied'),('permission denied to create role','create_role_permission_denied'),('must be superuser','superuser_required'),('Permission denied','file_permission_denied')]
@@ -54,7 +62,7 @@ def main():
  # Parent must exist. Only a newly created child can be used. Existing clusters are never reused.
  with tempfile.TemporaryDirectory(prefix='rv-',dir=a.sandbox_parent.resolve()) as tmp:
   root=Path(tmp);plain=root/'plain';plain.mkdir(mode=0o700);sock=root/'sock';sock.mkdir(mode=0o700)
-  env=target_env(sock,RESTORE_ADMIN);cluster=root/'db';package=root/'package.tar'
+  cluster=root/'db';package=root/'package.tar'
   with package.open('xb') as out:
    try:
     d=subprocess.run(['age','--decrypt','-i',str(a.identity.resolve()),str(a.archive.resolve())],stdout=out,stderr=subprocess.PIPE,timeout=300)
@@ -63,7 +71,8 @@ def main():
   safe_unpack(package,plain);package.unlink()
   expected=json.loads((plain/'manifest.json').read_text())
   if any(r[0]==RESTORE_ADMIN for r in expected['roles']):raise Failure('restore_target','bootstrap_role_conflict')
-  run(['initdb','-D',str(cluster),'--username='+RESTORE_ADMIN,'--auth-local=trust','--auth-host=reject','--no-locale','--encoding=UTF8'],'local_init',env=env)
+  user=bootstrap_role(expected);env=target_env(sock,user)
+  run(['initdb','-D',str(cluster),'--username='+user,'--auth-local=trust','--auth-host=reject','--no-locale','--encoding=UTF8'],'local_init',env=env)
   started=False
   try:
    run(['pg_ctl','-D',str(cluster),'-l',str(root/'postgres.log'),'-o',"-k "+str(sock)+" -h ''",'-w','start'],'local_start',env=env);started=True
