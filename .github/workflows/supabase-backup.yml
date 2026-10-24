@@ -24,7 +24,7 @@ jobs:
       run:
         working-directory: ops/supabase-backup
     outputs:
-      object_key: ${{ steps.backup.outputs.object_key }}
+      object_name: ${{ steps.backup.outputs.object_name }}
       sha256: ${{ steps.backup.outputs.sha256 }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -84,7 +84,8 @@ jobs:
           R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
-          BACKUP_OBJECT_KEY: ${{ needs.prepare.outputs.object_key }}
+          BACKUP_OBJECT_NAME: ${{ needs.prepare.outputs.object_name }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           BACKUP_OBJECT_SHA256: ${{ needs.prepare.outputs.sha256 }}
           BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
           AWS_EC2_METADATA_DISABLED: 'true'
