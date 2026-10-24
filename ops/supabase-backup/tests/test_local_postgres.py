@@ -4,7 +4,7 @@ import json,os,shutil,sys,tempfile
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from backup import collect,run,manifest,Failure,Snapshot
-from verify_restore import target_env,restore_contents
+from verify_restore import target_env,restore_contents,RESTORE_ADMIN
 SQL="""
 CREATE ROLE fixture_reader NOLOGIN;
 CREATE SCHEMA auth;
@@ -28,9 +28,9 @@ CREATE TRIGGER fixture_guard BEFORE UPDATE ON public.business_quotes FOR EACH RO
 """
 def sql(env,s):
  return run(['psql','-X','-qAtw','-v','ON_ERROR_STOP=1','-c',s],'fictional_sql',env=env).decode().strip()
-def start(root,name):
- cluster=root/name;sock=root/(name+'s');sock.mkdir(mode=0o700);env=target_env(sock)
- run(['initdb','-D',str(cluster),'--username=postgres','--auth-local=trust','--auth-host=reject','--no-locale','--encoding=UTF8'],'fixture_init',env=env)
+def start(root,name,user='postgres'):
+ cluster=root/name;sock=root/(name+'s');sock.mkdir(mode=0o700);env=target_env(sock,user)
+ run(['initdb','-D',str(cluster),'--username='+user,'--auth-local=trust','--auth-host=reject','--no-locale','--encoding=UTF8'],'fixture_init',env=env)
  run(['pg_ctl','-D',str(cluster),'-l',str(root/(name+'.log')),'-o',"-k "+str(sock)+" -h ''",'-w','start'],'fixture_start',env=env)
  return cluster,env
 def main():
@@ -48,9 +48,10 @@ def main():
     assert manifest(e,snap.identifier)==old
     assert manifest(e)!=old
    plain=root/'plain';plain.mkdir(mode=0o700);expected=collect(plain,e,require_coverage=False)
-   target,t=start(root,'b');active.append((target,t))
+   target,t=start(root,'b',RESTORE_ADMIN);active.append((target,t))
    result=restore_contents(plain,t)
-   assert manifest(t)==expected
+   actual=manifest(t);actual['roles']=[r for r in actual['roles'] if r[0]!=RESTORE_ADMIN]
+   assert actual==expected
    assert sql(t,'SELECT quantity*unit_price,total FROM public.business_quotes')=='1350|1350'
    assert sql(t,'SELECT count(*) FROM public.business_quotes q JOIN public.business_customers c ON (q.customer_id,q.owner_id)=(c.id,c.owner_id)')=='1'
    assert sql(t,'SELECT sum(balance) FROM public.credit_accounts')=='31'
