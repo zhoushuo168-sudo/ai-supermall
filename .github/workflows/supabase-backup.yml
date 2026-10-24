@@ -49,6 +49,7 @@ jobs:
           PGDATABASE: postgres
           PGUSER: ${{ secrets.BACKUP_PGUSER }}
           PGPASSWORD: ${{ secrets.BACKUP_PGPASSWORD }}
+          PGSSLROOTCERT: ${{ github.workspace }}/ops/supabase-backup/certs/supabase-root.crt
           BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
           R2_ACCOUNT_ID: ${{ secrets.BACKUP_R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
